@@ -1,6 +1,6 @@
-eyline: an OGraf graphics playout engine
+# noPlayout: an OGraf graphics playout engine
 
-Working title: Keyline. Rename freely.
+Product name: noPlayout (renamed from the working title noPlayout by Caleb, 2026-11-26).
 
 1. What we are building
 
@@ -47,13 +47,13 @@ Use the NDI 6 SDK through a Rust binding: grafton-ndi, or ndi-sdk-sys / ndi-sdk 
 NDI video can carry alpha (BGRA / UYVA), so a single NDI source can carry fill and key together. Many switchers prefer discrete key and fill, so we also offer two separate sources.
 Licensing: the NDI SDK is royalty-free but has distribution and branding requirements. Load the NDI runtime dynamically. If the runtime is missing, show a clear "Install NDI Runtime" message and link, rather than crashing. Read https://docs.ndi.video/all/developing-with-ndi/sdk/licensing before shipping.
 3. Architecture
-┌──────────────────────────── Keyline (one install) ─────────────────────────────┐
+┌──────────────────────────── noPlayout (one install) ─────────────────────────────┐
 │                                                                                │
 │  UI shell (Tauri v2 app: Rust backend + TypeScript/Svelte frontend)            │
 │    Edit mode · Playout mode · Output setup · Settings                          │
 │            │  (local WebSocket + REST, same API external controllers use)     │
 │            ▼                                                                   │
-│  keyline-core (Rust library, owned by the "engine" process)                    │
+│  noplayout-core (Rust library, owned by the "engine" process)                    │
 │    ├─ Graphics library   (import/validate/store OGraf packages)                │
 │    ├─ Project / rundown  (shows, items, data, autosave)                        │
 │    ├─ Playout state      (channels → layers → graphic instances, step, data)   │
@@ -63,7 +63,7 @@ Licensing: the NDI SDK is royalty-free but has distribution and branding require
 │    └─ Data sources       (v1: manual + API; later: serial scoreboard, JSON)    │
 │            │                                                                   │
 │            ▼  (IPC: commands down, frames + status up)                         │
-│  keyline-renderer (separate process per channel, CEF offscreen)                │
+│  noplayout-renderer (separate process per channel, CEF offscreen)                │
 │    Hosts renderer.html → OGraf host runtime → layers of web components         │
 │    Paints BGRA frames at channel frame rate → NDI senders / preview frames     │
 │                                                                                │
@@ -88,7 +88,7 @@ Format: one dropdown. Choices: 1080p59.94 (default), 1080p50, 1080p29.97, 1080p2
 Channels: default 1, add up to 4. Each channel gets a name (e.g. "Main", "Video Board").
 Outputs per channel, each a checkbox:
 Web output: shows copyable URLs (see 4.2) and a port setting (default 8686) under Advanced.
-NDI output: source name (default KEYLINE <channel name>) plus a mode selector:
+NDI output: source name (default NOPLAYOUT <channel name>) plus a mode selector:
 Fill + Alpha (one NDI source with alpha). This is the default.
 Separate Fill & Key (two NDI sources: <name> FILL and <name> KEY).
 Advanced: fill type Shaped (premultiplied) / Unshaped (straight), with a short explanation of each. Pick the default after checking NDI's documented alpha convention, record it in DECISIONS.md, and put a hint in the UI ("Choose Unshaped if edges look dark on your switcher").
@@ -141,9 +141,9 @@ Up/Down = select the previous/next rundown item
 The hotkey map is configurable.
 External control:
 Implement the OGraf Server API (see the spec repo) for graphics, renderers, targets and actions.
-Add Keyline endpoints for the rundown: take, next, out, cue <item>, update <item> data. These make Bitfocus Companion / Stream Deck integration trivial.
+Add noPlayout endpoints for the rundown: take, next, out, cue <item>, update <item> data. These make Bitfocus Companion / Stream Deck integration trivial.
 Publish the OpenAPI document at /api/docs.
-Autosave the show every change (debounced). Reopening the app restores the rundown and data. On-air state is restored only if the user confirms ("Graphics were on air when Keyline closed. Restore them?").
+Autosave the show every change (debounced). Reopening the app restores the rundown and data. On-air state is restored only if the user confirms ("Graphics were on air when noPlayout closed. Restore them?").
 5.2 Edit mode (designer)
 
 The goal is to let a non-coder build typical broadcast graphics and export them as valid OGraf packages.
@@ -152,7 +152,7 @@ Library panel:
 All graphics in the project.
 Import OGraf packages (zip or folder): validate them against the v1 JSON schema and show clear errors.
 Imported code-based graphics are "Coded": you can edit default data values, the name and the thumbnail, but not the design.
-Graphics built in Keyline are "Designed" and fully editable.
+Graphics built in noPlayout are "Designed" and fully editable.
 Canvas:
 Fixed to the format resolution and scaled to fit.
 Toggleable action-safe and title-safe guides.
@@ -216,10 +216,10 @@ The NDI runtime is detected at runtime, not bundled, unless the licence review s
 First launch opens the Output Setup wizard.
 11. Milestones (build in this order; each ends runnable)
 #	Milestone	Done when
-M0	Workspace skeleton (keyline-core, keyline-renderer, keyline-app), CI green on all OSes	cargo run opens an empty app window on Win/Mac/Linux
+M0	Workspace skeleton (noplayout-core, noplayout-renderer, noplayout-app), CI green on all OSes	cargo run opens an empty app window on Win/Mac/Linux
 M1	OGraf host runtime + CEF offscreen renderer	The Basketball scorebug renders and animates offscreen; frames saved as PNG show correct alpha
-M2	NDI output: Fill+Alpha and Separate Fill & Key, test pattern, health	The NDI Studio Monitor / OBS shows Keyline sources; key and fill line up
+M2	NDI output: Fill+Alpha and Separate Fill & Key, test pattern, health	The NDI Studio Monitor / OBS shows noPlayout sources; key and fill line up
 M3	Web outputs: program/fill/key/preview URLs, state sync, late-join snapshot	OBS Browser Source plays the scorebug driven from the API
 M4	Playout mode + settings store + Output Setup wizard + OGraf Server API	A full basketball show can be run from the UI and from HTTP calls
-M5	Edit mode + OGraf export	A lower third designed in Keyline exports, validates, and plays in Keyline and in SuperFly ograf-server
+M5	Edit mode + OGraf export	A lower third designed in noPlayout exports, validates, and plays in noPlayout and in SuperFly ograf-server
 M6	Hardening: watchdog, recovery, soak, packaging/installers	All tests in §9 pass; installers are produced for all three OSes

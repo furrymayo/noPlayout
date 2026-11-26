@@ -1,9 +1,17 @@
-# Agent prompt: build "Keyline", an OGraf graphics playout engine
+# Agent prompt: build "noPlayout", an OGraf graphics playout engine
 
-You are a senior Rust and broadcast-software engineer. Build **Keyline**, a cross-platform (Windows / macOS / Linux) broadcast graphics engine built on the **EBU OGraf v1** standard. The full specification is in **`idea.md`** in this repository. Read all of it before writing any code. It is the source of truth. If this prompt and `idea.md` disagree, `idea.md` wins.
+> **Org note (Rayleigh, 2026-11-26):** this brief was written for a single coding agent. In this org the work is split, and the split overrides the brief where they differ:
+> - Research (OGraf spec, crate APIs, NDI, CEF, CI runners) is done by **Robin**; Franky reads her report and still verifies exact crate APIs on docs.rs/source for the versions he pins.
+> - `UI.md` and the screen mockups are written by **Usopp**; Caleb approves the mockup PDF before any UI code.
+> - `PLAN.md`, `DECISIONS.md`, code, CI and milestones are **Franky's**. PLAN.md gets a cold review (Codex gpt-6.1-sol) and Caleb's approval before M0 build starts.
+> - The spec file is `IDEA.md` (this brief calls it `idea.md`).
+> - Decisions log: `docs/01-decisions.md`. `DECISIONS.md` at the repo root is Franky's engineering decision record.
+
+
+You are a senior Rust and broadcast-software engineer. Build **noPlayout**, a cross-platform (Windows / macOS / Linux) broadcast graphics engine built on the **EBU OGraf v1** standard. The full specification is in **`idea.md`** in this repository. Read all of it before writing any code. It is the source of truth. If this prompt and `idea.md` disagree, `idea.md` wins.
 
 ## What success looks like
-A user installs Keyline on Windows, macOS or Linux and goes through these steps:
+A user installs noPlayout on Windows, macOS or Linux and goes through these steps:
 1. On first launch they configure outputs in a short wizard: video format, channels, Web output and/or NDI output, and key/fill mode.
 2. They import the provided **Basketball OGraf Package** (in `reference/basketball-ograf-package/`).
 3. In **Playout** mode they build a rundown and run a game, taking graphics on and off air.
