@@ -11,29 +11,29 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 
 | ID | Decision | Status |
 |---|---|---|
-| E-001 | Three process kinds: app, headless engine, one renderer per channel | Proposed |
+| E-001 | Three process kinds: app, headless engine, one renderer per channel | Amended by E-040/E-041 (rev 2): four kinds |
 | E-002 | Cargo workspace split; renderer does not link the engine core | Proposed |
 | E-003 | UI framework: Tauri v2 (stable) + system webview | Proposed |
 | E-004 | UI front end: Svelte 5 + TypeScript | Proposed |
 | E-005 | CEF paint mode: CPU `on_paint`, shared texture off in v1 | Proposed |
-| E-006 | Frame pacing: integer per-channel clock in the renderer; drive mode chosen per OS by S1 | Spike-gated |
+| E-006 | Frame pacing: integer per-channel clock; drive mode chosen per OS by S1 | Spike-gated; clock moved to the output process (E-040), pass/fail replaced by E-048 |
 | E-007 | NDI crate: grafton-ndi 3.0.0 behind our own trait | Proposed |
-| E-008 | NDI sending happens inside the renderer process | Proposed |
+| E-008 | NDI sending happens inside the renderer process | **Superseded by E-040** |
 | E-009 | Shaped vs unshaped defaults, per output mode | Decided (Caleb, D-010), bench-confirm in M2 |
 | E-010 | NDI wire format BGRA/BGRX, explicit timecode, SDK clocking off | Proposed |
 | E-011 | NDI runtime detected and linked, never bundled | Decided (Caleb, D-010) |
-| E-012 | IPC: local sockets + postcard; no shared memory in v1 | Proposed |
-| E-013 | Monitor frames: downscaled JPEG made in the renderer, credit flow control | Spike-gated (S3) |
-| E-014 | One CEF browser process per channel | Proposed |
+| E-012 | IPC: local sockets + postcard; no shared memory in v1 | **Superseded in part by E-042** (local sockets + postcard stay for control) |
+| E-013 | Monitor frames: downscaled JPEG, credit flow control | Spike-gated (S3); program monitor now made in the output process |
+| E-014 | One CEF browser process per channel | Amended by E-041: two per channel (active + standby) |
 | E-015 | Cue preloads the graphic into a hidden slot | Proposed |
 | E-016 | Web fill/key pages made from the same scene with SVG colour-matrix filters | Proposed |
-| E-017 | One OGraf host runtime for every page; the CEF program page is authoritative | Proposed |
+| E-017 | One OGraf host runtime for every page; the CEF program page is authoritative | Amended by E-046 (authority bound to incarnation + token) |
 | E-018 | Pages are driven over a WebSocket host protocol, not CEF process messages | Proposed |
-| E-019 | Crash recovery by replaying each instance's action log with `skipAnimation` | Proposed |
-| E-020 | Settings: JSON, atomic write, last-good, validation in Rust | Proposed |
+| E-019 | Crash recovery by replaying each instance's action log with `skipAnimation` | **Superseded by E-041/E-043/E-044/E-045** |
+| E-020 | Settings: JSON, atomic write, last-good, validation in Rust | Amended by E-050 (apply transaction) |
 | E-021 | Take IDs: u16, unique per show, enforced in the engine | Decided (Caleb, D-005, D-010) |
 | E-022 | Decoder plug-ins: compiled in, one crate per decoder | Proposed |
-| E-023 | Decoders are gated on real captures; OES only in v1 | Decided (Caleb, D-011) + Proposed gate |
+| E-023 | Decoders are gated on real captures; OES only in v1 | Decided (Caleb, D-011); **gate replaced by D-013** for OES |
 | E-024 | OGraf spec vendored at a commit; manifest validation never uses the network | Proposed |
 | E-025 | Edit-mode preview rendered by a CEF renderer | Decided (Caleb, D-010) |
 | E-026 | OGraf Server API mapping: renderer = channel, RenderTarget = `{layer}` | Proposed |
@@ -43,17 +43,33 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 | E-030 | Pure-Rust JPEG encoder | Proposed |
 | E-031 | Accept `serialport` (MPL-2.0) | Proposed |
 | E-032 | cargo-deny licence allowlist; nothing copyleft in the renderer | Proposed |
-| E-033 | Engine death: renderers exit; supervised restart restores, cold start asks | Proposed |
+| E-033 | Engine death: renderers and output processes exit; supervised restart restores, cold start asks | Proposed (rev 2 wording) |
 | E-034 | Network exposure default as IDEA says (open on the LAN), token optional | Proposed (flagged) |
 | E-035 | ADRs in `docs/adr/`, one per accepted entry | Proposed |
 | E-036 | Repo licence Apache-2.0 | Decided (Caleb, D-010) |
 | E-037 | RossTalk-compatible listener in v1, off by default | Decided (Caleb, D-010) |
 | E-038 | Data-source connections per computer, mappings per show; hold on loss | Decided (Caleb, D-009) |
 | E-039 | TAKE onto an occupied layer replaces it with a cut | Proposed |
+| E-040 | Per-channel output process owns the clock and the NDI senders | Proposed (rev 2), gated by S7a/S8 |
+| E-041 | Warm standby renderer per channel, live-mirrored | Proposed (rev 2), gated by S7a; cost question Q1 |
+| E-042 | Shared-memory paint ring per renderer (iceoryx2 or own ring) | Spike-gated (S8) |
+| E-043 | Failure kinds, detectors and the recovery measurement | Proposed (rev 2) |
+| E-044 | Uncapped on-air journal; no compaction for third-party graphics | Proposed (rev 2) |
+| E-045 | Time-dependent state: declared checkpoints, flags, no silent loss | Proposed (rev 2); limitation question Q2 |
+| E-046 | Identities, authority binding and ordered result commit | Proposed (rev 2) |
+| E-047 | Server timestamps on the host protocol | Proposed (rev 2) |
+| E-048 | Pacing acceptance by a pixel-only receiver-side oracle | Proposed (rev 2); soak question Q3 |
+| E-049 | Paint identity, single conversion, per-sender threads | Proposed (rev 2) |
+| E-050 | Settings apply transaction with one owner and an effective revision | Proposed (rev 2) |
+| E-051 | Fallback completion status; required formats and platforms stay required | Proposed (rev 2); question Q4 |
 
 ---
 
 ## E-001: Process model
+> **Rev 2, amended by E-040 and E-041.** Four process kinds: app, headless engine, and per channel one **output process**
+> (clock, conversion, NDI) plus **two renderers** (active and warm standby). The reasons below for (c) still hold; rev 2 adds
+> that output must survive a renderer failure.
+
 - **Context.** IDEA needs a desktop app, a per-channel offscreen Chromium and an HTTP API that Companion can use, and IDEA §6
   wants a renderer crash to recover in about 2 s.
 - **Options.** (a) One process: Tauri app hosts the engine and CEF. (b) App + one engine that also hosts all CEF browsers.
@@ -108,6 +124,11 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   R3). Then (b) becomes a v1.x ADR.
 
 ## E-006: Frame pacing
+> **Rev 2.** The clock moves to the output process (E-040); renderers compute the same deadlines from the epoch it publishes.
+> The paint↔slot tagging is replaced by E-049, and the pass/fail line below is replaced by E-048's oracle thresholds
+> (review 1 F4: "beyond the counted `repeated`" let counted defects pass). S1 is split into S1a (M1, paint level,
+> provisional) and S1b (M2, receiver, final) (F10). The options and the mode A/B choice stand.
+
 - **Context.** Output must run at exactly 60000/1001 (or 50, 30000/1001, 25) with no drift, and FILL and KEY must be one
   frame apart never. CEF #4311: external begin-frames carry `Now()` and a fixed 60 Hz interval and are dropped if one is
   already pending.
@@ -136,6 +157,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Risk.** One maintainer (R4). Exit is (d), sized as one card.
 
 ## E-008: Where NDI is sent
+> **Superseded by E-040 (rev 2).** The reason below ("a renderer crash takes down that channel's NDI anyway, so (b) buys no
+> resilience") stopped holding once recovery has to be ≤ 2 s with no output gap (review 1 F1): with NDI in a separate output
+> process, the sources stay up and hold the last frame while a standby renderer takes over. Kept for the record.
+
 - **Options.** (a) In the renderer, next to the pixels. (b) In the engine, with frames moved over shared memory (iceoryx2 or
   memmap2).
 - **Choice.** (a).
@@ -172,6 +197,11 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   safer as "the user installs NDI's runtime". It also keeps a public repo and its CI caches free of NDI binaries.
 
 ## E-012: IPC transport and encoding
+> **Rev 2, superseded in part by E-042.** Control (heartbeat, configure, health, events) stays on `interprocess` local sockets
+> with postcard, now one per process (output process and each renderer), with heartbeats at 100 ms. Monitor JPEGs keep a
+> separate socket. Full-rate paints from renderer to output process go over the shared-memory ring of E-042, because NDI
+> left the renderer (E-040).
+
 - **Options.** gRPC, JSON over local sockets, postcard over local sockets, shared memory (iceoryx2 0.10.1), CEF process
   messages.
 - **Choice.** `interprocess` 2.4.10 local sockets (named pipes on Windows, Unix domain sockets elsewhere), two per channel
@@ -181,6 +211,9 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   Shared memory is unnecessary once full-rate pixels stay in the renderer (E-008).
 
 ## E-013: Monitor frames
+> **Rev 2.** The program monitor is made in the output process from what actually goes to air; the preview monitor in the
+> standby renderer. Method, rates, credits and the S3 gate are unchanged (S3 now also counts the standby's cost).
+
 - **Choice.** The renderer downscales to 480×270, composites onto a checkerboard, JPEG-encodes (quality 80) at about 15 fps,
   and sends with credit-based flow control (2 credits, newest wins). The engine relays to the UI over a binary WebSocket, one
   frame in flight per client.
@@ -190,6 +223,9 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   any `slots_skipped`; then lower the rate or size.
 
 ## E-014: One CEF browser process per channel
+> **Rev 2, amended by E-041.** Two renderer processes per channel (active + standby), each with its own `root_cache_path`
+> (`cef-cache/<channel>-<slot>/`). Isolation between channels is unchanged.
+
 - **Options.** One renderer process hosting all channels' browsers, or one per channel.
 - **Choice.** One per channel (Robin D2), each with its own `root_cache_path`.
 - **Reason.** Isolation: a hung GPU process or crashed browser affects one channel. Separate clocks without cross-channel
@@ -213,6 +249,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Gate.** M3 pixel test: `/key` from CEF vs the NDI KEY within 2 LSB for a ≥ 16 (R8). Fallback: WebGL pass.
 
 ## E-017: One host runtime, program authoritative
+> **Rev 2, amended by E-046.** "Program" is now the program page of whichever renderer the engine made active. Authority is
+> bound to a loopback connection, the renderer incarnation and its launch token, never to the role string; results commit
+> in `seq` order per instance (PLAN §2.14).
+
 - **Choice.** Every page (CEF program and preview, web outputs, editor) runs the same `ograf-host.js` with a role. Only the
   CEF program page's results answer API calls and drive engine state; other pages' results are logged and compared.
 - **Reason.** One implementation of OGraf semantics (load-before-actions, ordering, `currentStep`, `stepCount: -1`) means web
@@ -226,6 +266,13 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Cost.** One loopback WebSocket hop per action; negligible against animation times.
 
 ## E-019: Crash recovery
+> **Superseded by E-041, E-043, E-044 and E-045 (rev 2).** Review 1 F2 showed the 256-entry cap with a `goto` fallback loses
+> real state: the reviewer ran the unmodified Basketball scorebug in Chromium with `homeScore: 10` and 257
+> `addPoints(home, 1)` calls (score 267); emulating the capped fallback (`load(currentData)` + `goto: 0`) gives 10, because
+> `addPoints` changes the graphic's own data and `customAction` returns only a status. Replaying `startClock` after a short
+> wait lost 1,280.5 ms of elapsed clock time even without a cap. Merging updates is not provably equivalent for a
+> third-party graphic either. Kept for the record.
+
 - **Choice.** Each instance keeps an ordered action log (cap 256). A page that reconnects gets `load(dataAtLoad)` and the log
   replayed with `skipAnimation: true`, consecutive updates merged. Past the cap: `load(currentData)` +
   `playAction({goto: step, skipAnimation: true})` and a Health note.
@@ -234,6 +281,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Gate.** M6: 20/20 crash tests restore the same graphics and steps within 2 s at an NDI receiver.
 
 ## E-020: Settings store
+> **Rev 2, amended by E-050.** "All-or-nothing" was only true for validation; applying a valid document can still fail
+> halfway (review 1 F5). E-050 adds the apply transaction, the effective revision and the startup rules. "Last-good" now
+> means last *applied*, not last loaded.
+
 - **Choice.** JSON with `schemaVersion`, validated in Rust (serde + `validate()`), atomic temp-write/fsync/rename, a
   last-good copy rewritten only after a clean load, migrations that back up first, `PUT /settings` all-or-nothing.
 - **Reason.** Hand-editable, diffable, and IDEA §6's "never half-applied" rule. A truncated or bad file loads last-good and
@@ -257,6 +308,12 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Would change if.** Third parties need to ship decoders without rebuilding noPlayout; then (c).
 
 ## E-023: Real captures gate decoders; OES only in v1
+> **Rev 2: the OES gate is replaced by D-013.** M4.5 is done when the decoder passes a corpus ported from
+> `unc-virtual-score-server` (test vectors plus simulator streams recorded once into captures), byte-for-byte over serial
+> loopback, TCP and UDP. No venue recording is required. STATUS.md states D-013's limitation (the simulators share the
+> decoder's protocol knowledge; a live console check is recommended at the first game, not a gate). The real-capture gate
+> below still applies to later decoders (Daktronics etc.) unless Caleb decides otherwise for them.
+
 - **Choice (D-011 + gate).** v1 ships one decoder, OES, ported from Caleb's MIT-licensed `unc-virtual-score-server`
   (framing STX / sport type / printable payload / CR; nine sport layouts; 9600 baud). A decoder is listed in the product only
   when a recorded byte stream from a real console decodes to a golden timeline Caleb has checked. Daktronics All Sport 5000
@@ -317,6 +374,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Reason.** Keeps the NDI licence conditions and "private later" (D-003) clean without manual audits.
 
 ## E-033: Engine death and restore
+> **Rev 2.** Output processes exit 3 s after their control socket closes, like renderers (holding the last frame meanwhile).
+> A supervised engine restart cold-restores every channel from the persisted journal (E-044). An app crash with the engine
+> still running reattaches and replays nothing. Gate unchanged (≤ 5 s, R17).
+
 - **Choice.** Renderers exit 3 s after their control socket closes (no orphan CEF). The app restarts the engine; a
   supervised restart restores on-air state without asking. A cold start (machine or app relaunch) asks "Restore them?"
   (Enter = Restore), as IDEA §5.1 says.
@@ -363,3 +424,133 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Reason.** Matches XPression's take-replaces-layer behaviour operators know, and keeps TAKE's timing independent of the
   outgoing graphic's out animation. An operator who wants the out animation presses OUT first.
 - **Would change if.** Usopp or Caleb wants "animate out, then in"; it would be a per-item option, not a new default.
+
+---
+
+# Rev 2 entries (review 1)
+
+## E-040: Per-channel output process owns the clock and NDI
+- **Context.** Review 1 F1: with NDI inside the renderer (E-008), a renderer crash or hang takes the NDI sources down, and a
+  2 s restart budget can't cover detection + CEF start + page load + replay + receiver reacquire. IDEA §9's crash test needs
+  output back in the same state within 2 s.
+- **Options.** (a) Keep E-008 and make cold restarts faster. (b) Move NDI into the engine, frames over shared memory.
+  (c) A small per-channel **output process**: clock, paint selection, one conversion, NDI senders, program monitor.
+- **Choice.** (c). Renderers write paints into a shared-memory ring (E-042); the output process reads the active renderer's
+  ring at each slot and holds the last frame when none is fresh (PLAN §2.4a, §5).
+- **Reason.** NDI sources stay up through any renderer failure, so receivers never reacquire and the outage is only the
+  time to the first fresh paint. (b) would put per-frame real-time work and the NDI SDK into the control plane, so a stuck
+  `submit_video` (F7) could stall every channel and the API. (a) cannot meet 2 s for a hang (detection alone eats most of
+  it) and stays above 2 s for asset-heavy packages (est. 0.6–2.5 s, PLAN §2.13.5).
+- **Cost.** One more process per channel and a shared-memory protocol; ≈ 497 MB/s per 1080p59.94 channel crosses a process
+  boundary (one copy into the ring, which CEF's `on_paint` needs anyway). The output process holds no CEF and no graphics,
+  so it is small; its own failure is K6.
+- **Gate.** S8 (M1) for the ring; S7a (M1) for the warm path at paint level; S7b (M2) at a receiver.
+- **Would change if.** S8 finds no ring that avoids blocking the writer on all three OSes; then the architecture is revisited
+  before M2 (PLAN §2.13.5 gate).
+
+## E-041: Warm standby renderer per channel
+- **Context.** F1 + F2: a restart from scratch can't reach 2 s for a hung page or asset-heavy graphics, and replay cannot
+  rebuild a third-party graphic's internal clock.
+- **Options.** (a) Cold restart only. (b) A pre-started *empty* spare renderer (saves CEF start, still loads and replays).
+  (c) A **warm standby**: a second renderer that runs the same show live (receives every action, renders at 1/6 rate,
+  hosts the preview browser), promoted on failure.
+- **Choice.** (c), on every channel by default. After promotion a new standby is cold-restored behind the new active.
+- **Reason.** Promotion needs no load and no replay: the standby executed the same actions, so `addPoints` effects and
+  running clocks are already there (within one frame of delivery skew). Estimated outage 0.15 s for a crash, 0.65 s for a
+  hang (PLAN §2.13.5). (b) only removes the CEF start from the cold path.
+- **Cost.** A second CEF per channel: est. 150–400 MB RAM and 15–30 % more CPU per channel (S7/M6 measure; R20). Non-
+  deterministic graphics can diverge (R23, divergence check). A graphic bug that hangs both copies needs the cold path
+  (K3b, R21).
+- **Open.** Q1 (whether the cold path must also meet 2 s, and whether the standby may be optional per channel).
+
+## E-042: Shared-memory paint ring
+- **Choice.** One 4-slot ring per renderer, slot headers `{state, inc, paint_seq, painted_at}` changed only by CAS; the writer
+  never blocks and never overwrites a slot being read; the reader holds at most one slot (PLAN §5.3). Transport: iceoryx2
+  0.10.1 if S8 shows it meets that with zero extra copies and no leaked shared memory after `kill -9` on all three OSes;
+  otherwise our own ring over `shm_open` / pagefile-backed `CreateFileMappingW`, mapped with memmap2 0.9.12.
+- **Reason.** Full-rate frames must cross a process boundary (E-040); local sockets would add a copy and backpressure on the
+  CEF paint thread. iceoryx2's API has been version-checked only; it is read in source in M1 before anything depends on it.
+- **Gate.** S8 (M1); R22.
+
+## E-043: Failure kinds and the recovery measurement
+- **Choice.** Nine failure rows K1–K7 (renderer exit, CEF child exit, GPU stall, page hang, poison action, UI-thread hang,
+  sender stall, output-process failure, engine death), each with its own detector and budget (PLAN §2.13.1). Control
+  heartbeat 100 ms, replacement at 500 ms of silence, inside IDEA's 500 ms / 2 s bounds. Outage = t1 − t0, t0 the harness's
+  monotonic clock just before the fault is injected, t1 the arrival at an independent NDI receiver of the first frame whose
+  pixels decode to the expected state and stay correct for 2 s. Per-stage budget with target and fail lines (§2.13.5).
+- **Reason.** F1: "restart after 2 s of no Pong" plus any restore work exceeds 2 s by construction; separating kinds lets a
+  process exit be handled in ≤ 20 ms and a hang in ≤ 500 ms. Failing over early is safe because promotion keeps all state.
+- **Gate.** S7a (M1, paint level) with the Basketball on-air set on Windows, macOS arm64 and Linux: a miss of the warm-path
+  fail line revisits the architecture before M2. M6: 20/20 K1 runs ≤ 2 s per reference machine.
+
+## E-044: Uncapped on-air journal
+- **Choice.** Every action dispatched to the authoritative page is journalled per instance with `seq`, `ts`, params and
+  committed result; never capped, never silently truncated, persisted to `shows/<id>.onair.jsonl`. Failed/timed-out actions
+  are journalled (the graphic saw them). No compaction for third-party graphics. Health warns above 50,000 entries with the
+  estimated replay time; nothing is dropped. A poison action is quarantined and named on the On-air strip.
+- **Reason.** F2: compaction or a cap is only safe where equivalence is established, and the engine can't establish it for
+  a graphic it doesn't understand. At < 1 kB per entry and ≈ 1 ms replay per action (est., S7 measures), a whole game's
+  scorebug journal stays well inside memory and a few seconds of replay.
+
+## E-045: Time-dependent state
+- **Choice.** Warm promotion keeps internal clocks (the standby ran them). On the cold path, a third-party graphic's internally
+  run clock is **not restored** and the instance is flagged on the On-air strip and in Health ("elapsed time not restored").
+  Graphics may declare `v_noplayout: {recovery: "checkpoint"}` (OGraf v1 allows `^v_` vendor keys) and implement
+  checkpoint/restore custom actions; every M5 Designed graphic does, so noPlayout's own graphics restore exactly on every
+  path. S9 tries DevTools virtual time for third-party clocks; adopted only if it returns to real time cleanly.
+- **Reason.** OGraf v1 has no get/set-state or seek; review 1's probe lost 1,280.5 ms of a `startClock` clock on replay. Data-
+  driven clocks (OES → `gameClock`) are durable input and restore exactly.
+- **Open.** Q2.
+
+## E-046: Identities, authority and result order
+- **Choice.** `engineRun` (UUIDv7), renderer incarnation `inc` (u64, increasing per channel), a 256-bit launch token per
+  incarnation (env var, handed to the program page by `execute_java_script`), `(instanceId, generation)` per occupancy,
+  `seq` per action. `program` registration requires loopback + current `inc` + matching token; superseded incarnations are
+  refused (4410) and killed. Results commit per instance in `seq` order; results for a gone generation can't change state;
+  replay results never commit. Promotion records a `seq` barrier. Snapshot-to-live handoff is atomic in the channel actor
+  (PLAN §2.14).
+- **Reason.** F6: with two replicas, reconnects and overlapping OGraf calls, "the program page's results are authoritative"
+  is ambiguous without identities; a stale or foreign page must never be able to change on-air state.
+
+## E-047: Server timestamps
+- **Choice.** Every `Action` and journal entry carries `ts {utcUs, mono {run, us}, slot? {k, epoch}}`: UTC from one engine
+  time source that never steps backwards within a run, engine monotonic time, and the channel's output slot (ties to NDI
+  `tc(k)`). Informational, never used to schedule. `TimeSync` every 5 s; pages report `lagMs` (PLAN §4.3).
+- **Reason.** F11: IDEA §4.2 requires server-timestamped actions. They also feed declared checkpoints, the stale-action rule at
+  handoff, diagnostics and the elapsed-time flags.
+
+## E-048: Pacing acceptance by a receiver-side oracle
+- **Choice.** A coded fixture draws its rAF counter `n`, a time-base index `m`, and an alpha-only copy of `n`; a separate
+  decoder reads pixels only (never noPlayout's counters) at an NDI receiver (and on paint dumps in M1). Numeric thresholds per
+  mode and rate (PLAN §5.5): mode A and mode B at 50/25 allow zero repeats, skips, tears, key mismatches and timecode errors;
+  mode B at 59.94/29.97 allows exactly the declared 1000:1001 conversion skips (Δn = 2, ≥ 900 frames apart) and is never
+  reported as zero-drop. Output counters must agree with the oracle. Eight injected faults must each fail the run.
+- **Reason.** F4: rev 1's "no holes beyond the counted `repeated`" let a counted defect pass and trusted the sender's own tags.
+- **Open.** Q3 (whether a mode-B-only OS meets the soak bar).
+
+## E-049: Paint identity, one conversion, per-sender threads
+- **Choice.** Paints are named `(inc, paint_seq)`, slots `k`; nothing infers which begin-frame made a paint. The pacer converts
+  the chosen paint once into an immutable FILL/KEY (or Fill+Alpha) snapshot with one `tc(k)`; each NDI sender has its own
+  thread, three frames and a one-deep newest-wins queue; the pacer never calls the SDK. Progress monitor: `SenderStall` at
+  250 ms, recreate at 2 s, output-process restart on a repeat within 10 s (K5).
+- **Reason.** F7: rev 1 tagged paints by assumed begin-frame and let a blocking `submit_video` (possible even with clocking off,
+  grafton-ndi 3.0.0 docs) delay the clock and the other plane.
+
+## E-050: Settings apply transaction
+- **Choice.** One `settings` actor owns the document and an `effective_rev`; every writer uses `If-Match` (409 on stale).
+  Apply = validate (422, nothing changes) → plan → write `settings.pending.json` → apply each step with an undo → commit
+  (atomic rename to `settings.json`, then `last-good`), or roll back every applied step, move pending to `rejected/` and
+  report the failed step (500/503). Last-good = last successfully applied. A crash mid-apply: startup moves pending to
+  `rejected/` ("interrupted apply") and continues from the committed `settings.json`.
+  Future schema versions are refused and never overwritten (PLAN §2.11).
+- **Reason.** F5: validation alone doesn't make an apply all-or-nothing (a port or NDI name can fail after other changes
+  took effect), and two writers could lose an update silently.
+- **Gate.** The §2.11 fault matrix in M4.
+
+## E-051: Fallback completion status
+- **Choice.** Every fallback in the risk register has a status: in scope, partial (milestone stays open), stop (Franky reports
+  to Caleb with numbers) or deferral (Caleb's written approval only, recorded as a D-nnn), with an evidence owner (PLAN §6.1).
+  All eight IDEA formats and all three OSes stay required; a CI lane that can't run CEF needs a `preflight` evidence file at
+  every milestone commit; reports list passed, skipped and unexercised checks separately (§6.2).
+- **Reason.** F9: rev 1's fallbacks ("label it experimental", "local-only") could close a milestone with a requirement unmet.
+- **Open.** Q4.
