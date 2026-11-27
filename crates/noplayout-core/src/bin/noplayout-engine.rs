@@ -179,6 +179,14 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     let stop = Arc::new(Notify::new());
     let channel = "1";
     let time = noplayout_core::time::TimeSource::new();
+    let run_id = time.run().to_string();
+    // Paint rings of a crashed engine outlive it on Unix; sweep them before creating new ones.
+    let rings = noplayout_frames::shm::Registry::new(data.join("rings.txt"));
+    match rings.sweep() {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!("removed {n} paint ring(s) left by an earlier engine"),
+        Err(e) => tracing::warn!("cannot sweep old paint rings: {e}"),
+    }
     // TODO(M4): shows/<show-id>.onair.jsonl per open show; M1 journals the dev show. Lines are
     // flushed per record and fsynced on a 200 ms debounce by the writer thread.
     let (onair, _onair_thread) =
@@ -230,6 +238,35 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     )
     .await
     .ok();
+    let epoch_mono_ns = match output.as_ref().map(|o| &o.hello) {
+        Some(noplayout_proto::Hello::Output(h)) => h.epoch.mono_ns,
+        // TODO(M1): task 8's supervisor waits for the output process; until then a renderer
+        // without one paces from the engine's own clock.
+        _ => noplayout_frames::clock::mono_ns(),
+    };
+    let mut renderer_events = None;
+    if let Some(r) = &renderer {
+        renderer_events = r.take_events();
+        let spec = noplayout_core::program::ProgramSpec {
+            channel,
+            run: &run_id,
+            port: bound.port(),
+            format: noplayout_proto::Format::HD1080P5994,
+            mode: noplayout_core::program::drive_mode_from_env(),
+            epoch_mono_ns,
+            active: true,
+        };
+        match noplayout_core::program::open(&bus, &rings, r, spec).await {
+            Ok(o) => tracing::info!(inc = o.inc, ring = %o.ring, "program page configured"),
+            Err(e) => tracing::error!("cannot configure the program page: {e}"),
+        }
+    }
+    let renderer_event = async |rx: &mut Option<
+        tokio::sync::mpsc::UnboundedReceiver<noplayout_proto::Event>,
+    >| match rx {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    };
 
     // Dev-control faults and bus events. TODO(M1): task 8's supervisor owns these (standby,
     // promotion, rebuild); until then a fault acts on the single renderer directly.
@@ -251,6 +288,15 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
                 (f, None) => tracing::warn!(?f, "fault ignored: no renderer"),
             },
             Some(ev) = bus_rx.recv() => tracing::warn!(?ev, "bus event (no supervisor yet)"),
+            Some(ev) = renderer_event(&mut renderer_events) => match ev {
+                noplayout_proto::Event::Console { error: true, text } => {
+                    tracing::warn!(target: "program_page", "console error: {text}");
+                }
+                noplayout_proto::Event::Console { text, .. } => {
+                    tracing::debug!(target: "program_page", "{text}");
+                }
+                other => tracing::info!(?other, "renderer event"),
+            },
         }
     }
     drop(bus);
@@ -261,6 +307,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
             Err(e) => tracing::warn!(kind = child.kind.label(), "{e}"),
         }
     }
+    let _ = rings.sweep();
     server_stop.notify_one();
     match server.await {
         Ok(Ok(())) => {}

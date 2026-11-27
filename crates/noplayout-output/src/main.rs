@@ -37,15 +37,15 @@ fn channel_arg() -> Result<String, String> {
     channel.ok_or_else(|| "usage: noplayout-output --channel <id>".to_owned())
 }
 
-/// The channel clock epoch. `mono_ns` is measured from this process's start (its monotonic
-/// origin); `utc_100ns` is wall-clock UTC in NDI's 100 ns units.
-fn epoch(started: Instant) -> Epoch {
+/// The channel clock epoch. `mono_ns` is the machine-wide monotonic clock (PLAN §5.1) so
+/// renderers compute the same `T_k`; `utc_100ns` is wall-clock UTC in NDI's 100 ns units.
+fn epoch(_started: Instant) -> Epoch {
     let utc_100ns = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_nanos() / 100).unwrap_or(i64::MAX))
         .unwrap_or(0);
     Epoch {
-        mono_ns: u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+        mono_ns: noplayout_frames::clock::mono_ns(),
         utc_100ns,
     }
 }
@@ -87,8 +87,8 @@ fn run(started: Instant) -> Result<ExitCode, String> {
                     eprintln!("noplayout-output: pong failed: {e}");
                 }
             }
-            Ok(Down::HangPage { .. }) => {
-                eprintln!("noplayout-output: HangPage is a renderer message; ignored");
+            Ok(Down::HangPage { .. } | Down::Configure(_) | Down::Role { .. }) => {
+                eprintln!("noplayout-output: renderer-only message ignored");
             }
             Ok(Down::Shutdown) => {
                 eprintln!("noplayout-output: channel {channel} shutting down");

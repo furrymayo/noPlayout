@@ -111,9 +111,15 @@ pub struct ChildHandle {
     pub pid: Option<u32>,
     pub hello: Hello,
     cmd: mpsc::Sender<Cmd>,
+    events: std::sync::Mutex<Option<mpsc::UnboundedReceiver<noplayout_proto::Event>>>,
 }
 
 impl ChildHandle {
+    /// The child's `Up::Event`s, once (the supervisor takes them).
+    pub fn take_events(&self) -> Option<mpsc::UnboundedReceiver<noplayout_proto::Event>> {
+        self.events.lock().unwrap_or_else(|p| p.into_inner()).take()
+    }
+
     /// One `Ping` → `Pong` round trip.
     pub async fn ping(&self, timeout: Duration) -> Result<Pong, String> {
         let (tx, rx) = oneshot::channel();
@@ -292,12 +298,21 @@ async fn launch_inner(
     tracing::info!(kind, pid, ?hello, "hello");
 
     let (cmd_tx, cmd_rx) = mpsc::channel(8);
-    tokio::spawn(supervise(spec.kind, process, stream, cmd_rx, slot.clone()));
+    let (events_tx, events_rx) = mpsc::unbounded_channel();
+    tokio::spawn(supervise(
+        spec.kind,
+        process,
+        stream,
+        cmd_rx,
+        slot.clone(),
+        events_tx,
+    ));
     Ok(ChildHandle {
         kind: spec.kind,
         pid,
         hello,
         cmd: cmd_tx,
+        events: std::sync::Mutex::new(Some(events_rx)),
     })
 }
 
@@ -334,6 +349,7 @@ async fn supervise(
     stream: Arc<Stream>,
     mut cmd_rx: mpsc::Receiver<Cmd>,
     slot: Arc<RwLock<ChildHealth>>,
+    events: mpsc::UnboundedSender<noplayout_proto::Event>,
 ) {
     let label = kind.label();
     let (pong_tx, mut pong_rx) = mpsc::channel::<Pong>(16);
@@ -346,6 +362,10 @@ async fn supervise(
                     if pong_tx.send(p).await.is_err() {
                         break;
                     }
+                }
+                Ok(Up::Event(ev)) => {
+                    tracing::debug!(kind = label, ?ev, "event");
+                    let _ = events.send(ev);
                 }
                 Ok(other) => tracing::warn!(kind = label, ?other, "unexpected message"),
                 Err(e) => {

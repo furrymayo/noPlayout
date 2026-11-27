@@ -27,7 +27,24 @@ READING on respawn, and a name registry the engine sweeps (POSIX objects outlive
 S8 report: `docs/spikes/S8-paint-ring.md` (provisional Mac Studio numbers; iceoryx2 was not
 exercised, flagged there for the frontier review).
 
-Still pending: M1 tasks 4 (renderer OSR/ring writer/drive modes) –10 (output clock, oracle,
+Task 4, part 2 (renderer): `Configure` over the control socket (proto v2) creates the ring
+and a transparent OSR program browser on `/host/renderer.html?channel=…&role=program`;
+`on_load_end` injects `{inc, token}` by script (never in the URL), so the page registers as
+the authoritative incarnation; `on_paint` copies CEF's BGRA buffer straight into the ring
+with `{inc, paint_seq, painted_at}` on the machine-wide monotonic clock
+(`noplayout_frames::clock`, also the output epoch now). Mode A runs an elevated begin-frame
+thread at `T_k − lead` (every slot active, every 6th standby); mode B sets
+`windowless_frame_rate` to `ceil(fps)`/10. Paint probe (E-057) invalidates after 100 ms
+without a paint and stamps the ring header. The message loop follows
+`on_schedule_message_pump_work`. Audio muted; console messages and
+`on_render_process_terminated` go to the engine as events; `ctl hang` busy-loops the page.
+Self-test now checks a 1920×1080 paint in the ring; `scripts/dev-smoke-renderer.sh A|B`
+drives load/play through a real CEF page (both modes pass on the Mac Studio). Gaps: the
+standby slot and promotion are task 8 (`Role` exists, nothing sends it yet); the preview
+browser and monitor JPEGs are M3 (`TODO(M1)` in the renderer); M1 uses the external pump on
+every OS (`TODO(M2)`); the engine falls back to its own clock when no output process is up.
+
+Still pending: M1 tasks 5–10 (output clock, oracle,
 spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.

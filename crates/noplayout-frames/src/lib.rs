@@ -4,6 +4,7 @@
 //! Transport is our own 4-slot ring over a platform shared-memory object ([`shm`]); spike S8
 //! (`docs/spikes/S8-paint-ring.md`) records why iceoryx2 was not adopted in M1.
 
+pub mod clock;
 pub mod ring;
 pub mod shm;
 

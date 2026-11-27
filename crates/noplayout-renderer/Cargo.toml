@@ -14,6 +14,7 @@ helper_name = "noplayout-renderer"
 
 [dependencies]
 noplayout-proto.workspace = true
+noplayout-frames.workspace = true
 interprocess.workspace = true
 cef.workspace = true
 

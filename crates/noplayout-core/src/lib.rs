@@ -15,6 +15,7 @@ pub mod instance;
 pub mod library;
 pub mod logging;
 pub mod paths;
+pub mod program;
 pub mod selftest;
 pub mod time;
 

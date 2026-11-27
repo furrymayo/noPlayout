@@ -45,6 +45,9 @@ struct RingHeader {
     overwrites: AtomicU64,
     /// Reader-side: READY paints freed unread because a newer one was taken.
     superseded: AtomicU64,
+    /// Paint probe (E-057): bumped by the renderer each time it asks CEF for a full repaint.
+    probe_seq: AtomicU64,
+    probe_requested_ns: AtomicU64,
     slots: [SlotHeader; SLOTS],
 }
 
@@ -153,6 +156,11 @@ impl Writer {
         &self.name
     }
 
+    /// Bytes per slot (the largest paint the ring holds).
+    pub fn slot_len(&self) -> usize {
+        self.m.slot_len()
+    }
+
     /// Take a slot to paint into: a FREE one, else the oldest READY one (`overwrites += 1`),
     /// never a READING one. A failed compare-and-swap means the reader just took or freed a
     /// slot, so the next pass finds one; the loop is lock-free and allocation-free. `None` only
@@ -211,6 +219,13 @@ impl Writer {
     /// Writer-side counter (`ring_overwrites`).
     pub fn overwrites(&self) -> u64 {
         self.m.header().overwrites.load(Ordering::Relaxed)
+    }
+
+    /// Record a paint probe (E-057): the time first, then the sequence with release.
+    pub fn record_probe(&self, requested_ns: u64) -> u64 {
+        let h = self.m.header();
+        h.probe_requested_ns.store(requested_ns, Ordering::Relaxed);
+        h.probe_seq.fetch_add(1, Ordering::Release) + 1
     }
 }
 
@@ -383,6 +398,14 @@ impl Reader {
     }
     pub fn superseded(&self) -> u64 {
         self.m.header().superseded.load(Ordering::Relaxed)
+    }
+
+    /// The renderer's latest paint probe `(probe_seq, requested_ns)`; the output process judges
+    /// whether a paint answered it (K2g).
+    pub fn probe(&self) -> (u64, u64) {
+        let h = self.m.header();
+        let seq = h.probe_seq.load(Ordering::Acquire);
+        (seq, h.probe_requested_ns.load(Ordering::Relaxed))
     }
 }
 

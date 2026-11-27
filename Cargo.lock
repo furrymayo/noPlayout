@@ -2700,6 +2700,7 @@ dependencies = [
  "futures-util",
  "interprocess",
  "jsonschema",
+ "noplayout-frames",
  "noplayout-proto",
  "serde",
  "serde_json",
@@ -2727,6 +2728,7 @@ name = "noplayout-frames"
 version = "0.0.1"
 dependencies = [
  "libc",
+ "serde",
  "windows-sys 0.61.2",
 ]
 
@@ -2743,6 +2745,7 @@ name = "noplayout-output"
 version = "0.0.1"
 dependencies = [
  "interprocess",
+ "noplayout-frames",
  "noplayout-proto",
 ]
 
@@ -2766,6 +2769,7 @@ version = "0.0.1"
 dependencies = [
  "cef",
  "interprocess",
+ "noplayout-frames",
  "noplayout-proto",
 ]
 
