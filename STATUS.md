@@ -63,5 +63,14 @@ Linux needs the Tauri v2 packages listed in README.md; Windows needs the MSVC bu
 
 ## CI and billing
 
-Public repo, GitHub-hosted runners (PLAN §8.1). The first M0 push records here whether Actions
-ran or was refused at the account billing gate.
+Public repo, GitHub-hosted runners (PLAN §8.1). **Actions runs:** the first push (2026-11-27) ran
+every job with no billing refusal, so the account's private-repo payment problem does not reach
+this public repo. The final lane results are on the M0 PR's checks.
+
+What the first CI rounds found (fixed in M0):
+- Windows file locks are mandatory, so the lock holder's pid/port now lives in `engine.holder`
+  beside `engine.lock`.
+- Windows checks text out as CRLF; `.gitattributes` makes text LF everywhere (fixtures excluded).
+- cef-dll-sys 156.7.0 copies the CEF runtime into `<profile>/build/` instead of next to the
+  binaries with this Cargo's build-dir layout; `cargo xtask bundle` now places it on Linux and
+  Windows itself (and the Linux renderer carries `RUNPATH $ORIGIN`). Worth reporting upstream.
