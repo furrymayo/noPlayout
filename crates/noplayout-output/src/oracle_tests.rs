@@ -85,11 +85,14 @@ impl pacer::Clock for Virtual {
     }
 }
 
-fn dump_run(
-    tag: &str,
-    fault: Option<Fault>,
-    freeze_at: Option<u64>,
-) -> noplayout_oracle::analyze::Report {
+/// One dump run: the oracle's report, the output process's events and its final counters.
+struct Run {
+    report: noplayout_oracle::analyze::Report,
+    events: Vec<Event>,
+    stats: noplayout_proto::OutputStats,
+}
+
+fn dump_run(tag: &str, fault: Option<Fault>, freeze_at: Option<u64>) -> Run {
     let ring = format!("npt{tag}{:x}", std::process::id());
     let dir = std::env::temp_dir().join(format!("np-oracle-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -142,14 +145,17 @@ fn dump_run(
         .set(p.lanes.iter().map(|(pl, l)| (*pl, l.clone())).collect());
     *p.control.activate.lock().unwrap() = Some((ring.clone(), 3, DriveMode::A));
     let deadline = Instant::now() + Duration::from_secs(60);
+    let mut events = Vec::new();
     loop {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(Event::DumpComplete { .. }) => break,
-            Ok(_) => {}
+            Ok(e) => events.push(e),
             Err(_) => assert!(Instant::now() < deadline, "{tag}: pacer did not finish"),
         }
     }
     p.control.stop.store(true, Ordering::Relaxed);
+    let stats = p.stats.snapshot(&p.counters);
+    events.extend(rx.try_iter());
     let _ = noplayout_frames::shm::unlink(&ring);
     let (obs, key_tcs) = noplayout_oracle::dump::read(&dir).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
@@ -159,7 +165,23 @@ fn dump_run(
         den: 1001,
         warmup: 5,
     };
-    analyze(&spec, &obs, &key_tcs)
+    Run {
+        report: analyze(&spec, &obs, &key_tcs),
+        events,
+        stats,
+    }
+}
+
+fn stalls(events: &[Event]) -> Vec<&str> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::SenderStall { plane, .. } | Event::SenderStuck { plane, .. } => {
+                Some(plane.as_str())
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 fn failures(r: &noplayout_oracle::analyze::Report) -> Vec<&str> {
@@ -181,9 +203,21 @@ fn fault(kind: Kind) -> Option<Fault> {
 
 #[test]
 fn clean_dump_passes_the_mode_a_row() {
-    let r = dump_run("clean", None, None);
+    let Run {
+        report: r,
+        events,
+        stats,
+    } = dump_run("clean", None, None);
     assert!(r.pass, "{r:?}");
     assert_eq!(r.frames, 295);
+    // The output's own counters agree with the oracle: no skipped slot, no half-sent pair.
+    assert_eq!(
+        (stats.slots_skipped, stats.pair_partial),
+        (0, 0),
+        "{stats:?}"
+    );
+    assert_eq!(stats.slots, 300, "{stats:?}");
+    assert!(stalls(&events).is_empty(), "{events:?}");
 }
 
 /// Each injection fails the run and trips its detector. Where a permanent one-slot shift in
@@ -218,8 +252,20 @@ fn every_injected_fault_fails_with_its_detector() {
         ),
     ];
     for (tag, f, freeze, want) in cases {
-        let r = dump_run(tag, f, freeze);
+        let Run {
+            report: r,
+            events,
+            stats,
+        } = dump_run(tag, f, freeze);
         assert!(!r.pass, "{tag} must fail: {r:?}");
         assert_eq!(failures(&r), want, "{tag}: {r:?}");
+        if tag == "block" {
+            // Injection 8's intended detector (§5.5): the sender progress monitor, on KEY only.
+            assert_eq!(stalls(&events), vec!["key"], "{events:?}");
+            assert!(stats.pair_partial > 0, "{stats:?}");
+            // FILL is unaffected: every FILL slot delivered with one-period timecode steps.
+            assert_eq!((r.frames, r.timecode_errors, r.skips), (295, 0, 0), "{r:?}");
+            assert_eq!(stats.slots_skipped, 0, "{stats:?}");
+        }
     }
 }

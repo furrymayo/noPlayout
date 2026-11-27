@@ -99,8 +99,15 @@ impl Stats {
 pub struct Pacer {
     pub control: Arc<Control>,
     pub stats: Arc<Stats>,
+    pub counters: Arc<Counters>,
     pub lanes: Vec<(Plane, Arc<Lane>)>,
 }
+
+/// How often the monitor samples each lane. A 300 ms block (injection 8) must always be seen
+/// past [`SENDER_SLOW_NS`]: 50 ms sampling leaves at least one sample in the last 50 ms of it.
+const MONITOR_TICK: Duration = Duration::from_millis(50);
+/// `OutputStats` once a second.
+const STATS_EVERY: u64 = 20;
 
 struct Active {
     reader: Reader,
@@ -136,6 +143,7 @@ pub fn start(
     let pacer = Pacer {
         control: control.clone(),
         stats: stats.clone(),
+        counters: counters.clone(),
         lanes: lanes.clone(),
     };
     let ev = events.clone();
@@ -396,7 +404,7 @@ fn monitor(
     let mut reported: Vec<(bool, bool)> = vec![(false, false); lanes.len()];
     let mut tick = 0u64;
     while !control.stop.load(Ordering::Relaxed) {
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(MONITOR_TICK);
         let now = clock::mono_ns();
         for (i, (plane, lane)) in lanes.iter().enumerate() {
             let since = lane.in_flight_since.load(Ordering::Acquire);
@@ -426,7 +434,7 @@ fn monitor(
             }
         }
         tick += 1;
-        if tick.is_multiple_of(10) {
+        if tick.is_multiple_of(STATS_EVERY) {
             let _ = events.send(Event::OutputStats(stats.snapshot(counters)));
         }
     }
