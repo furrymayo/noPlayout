@@ -51,17 +51,23 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 | E-038 | Data-source connections per computer, mappings per show; hold on loss | Decided (Caleb, D-009) |
 | E-039 | TAKE onto an occupied layer replaces it with a cut | Proposed |
 | E-040 | Per-channel output process owns the clock and the NDI senders | Proposed (rev 2), gated by S7a/S8 |
-| E-041 | Warm standby renderer per channel, live-mirrored | Proposed (rev 2), gated by S7a; cost question Q1 |
+| E-041 | Warm standby renderer per channel, live-mirrored | Decided (Caleb, D-015 / Q1): on every channel; the 2 s guarantee is for a single failure with an exact standby. Eligibility amended by E-052 (rev 3) |
 | E-042 | Shared-memory paint ring per renderer (iceoryx2 or own ring) | Spike-gated (S8) |
-| E-043 | Failure kinds, detectors and the recovery measurement | Proposed (rev 2) |
+| E-043 | Failure kinds, detectors and the recovery measurement | Proposed (rev 2); K2g detector amended by E-057, K5 by E-055 (rev 3) |
 | E-044 | Uncapped on-air journal; no compaction for third-party graphics | Proposed (rev 2) |
-| E-045 | Time-dependent state: declared checkpoints, flags, no silent loss | Proposed (rev 2); limitation question Q2 |
+| E-045 | Time-dependent state: declared checkpoints, flags, no silent loss | Limitation decided (Caleb, D-015 / Q2); scope stated by E-052, checkpoint protocol by E-056 (rev 3) |
 | E-046 | Identities, authority binding and ordered result commit | Proposed (rev 2) |
 | E-047 | Server timestamps on the host protocol | Proposed (rev 2) |
-| E-048 | Pacing acceptance by a pixel-only receiver-side oracle | Proposed (rev 2); soak question Q3 |
-| E-049 | Paint identity, single conversion, per-sender threads | Proposed (rev 2) |
-| E-050 | Settings apply transaction with one owner and an effective revision | Proposed (rev 2) |
-| E-051 | Fallback completion status; required formats and platforms stay required | Proposed (rev 2); question Q4 |
+| E-048 | Pacing acceptance by a pixel-only receiver-side oracle | Proposed (rev 2); time-base check replaced by E-053 (rev 3); Q3 decided (Caleb, D-015) |
+| E-049 | Paint identity, single conversion, per-sender threads | Proposed (rev 2); stuck-sender handling replaced by E-055 (rev 3) |
+| E-050 | Settings apply transaction with one owner and an effective revision | Proposed (rev 2); commit point and post-apply failures defined by E-054 (rev 3) |
+| E-051 | Fallback completion status; required formats and platforms stay required | Proposed (rev 2); Q4 decided (Caleb, D-015): all formats stay required |
+| E-052 | Recovery fidelity per replica copy; promotion eligibility; what the 2 s same-state guarantee covers | Proposed (rev 3), within Caleb's D-015 |
+| E-053 | Pacing oracle time base in the source domain, plus a lag band | Proposed (rev 3), replaces E-048's `m` |
+| E-054 | Settings: one commit point, defined outcome for every persistence and rollback failure | Proposed (rev 3) |
+| E-055 | A non-returning NDI submit recycles the output process; slow submits keep the sender | Proposed (rev 3) |
+| E-056 | Declared checkpoint protocol: quiescent cut, frontier seq, timed tail inside restore | Proposed (rev 3) |
+| E-057 | PaintStall detected by a forced-repaint probe, not by rAF | Proposed (rev 3), spike-gated (S7a) |
 
 ---
 
@@ -449,6 +455,9 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   before M2 (PLAN §2.13.5 gate).
 
 ## E-041: Warm standby renderer per channel
+> **Rev 3.** Caleb decided Q1 as recommended (D-015): the standby stays on every channel, and ≤ 2 s same-state recovery is
+> guaranteed for a single failure **when the standby is exact** (E-052). A standby rebuilt after a failover is still
+> promoted (it always beats a cold restore), but it is exact only for what E-052 lists; the rest is flagged.
 - **Context.** F1 + F2: a restart from scratch can't reach 2 s for a hung page or asset-heavy graphics, and replay cannot
   rebuild a third-party graphic's internal clock.
 - **Options.** (a) Cold restart only. (b) A pre-started *empty* spare renderer (saves CEF start, still loads and replays).
@@ -461,7 +470,7 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Cost.** A second CEF per channel: est. 150–400 MB RAM and 15–30 % more CPU per channel (S7/M6 measure; R20). Non-
   deterministic graphics can diverge (R23, divergence check). A graphic bug that hangs both copies needs the cold path
   (K3b, R21).
-- **Open.** Q1 (whether the cold path must also meet 2 s, and whether the standby may be optional per channel).
+- **Open.** Q1 — decided by Caleb (D-015): option (a), standby on every channel; cold path best effort.
 
 ## E-042: Shared-memory paint ring
 - **Choice.** One 4-slot ring per renderer, slot headers `{state, inc, paint_seq, painted_at}` changed only by CAS; the writer
@@ -473,6 +482,8 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Gate.** S8 (M1); R22.
 
 ## E-043: Failure kinds and the recovery measurement
+> **Rev 3.** K2g's detector is the forced-repaint probe (E-057), not "no paint while rAF advances". K5 separates a slow
+> submit from a non-returning one; the non-returning case recycles the output process (E-055).
 - **Choice.** Nine failure rows K1–K7 (renderer exit, CEF child exit, GPU stall, page hang, poison action, UI-thread hang,
   sender stall, output-process failure, engine death), each with its own detector and budget (PLAN §2.13.1). Control
   heartbeat 100 ms, replacement at 500 ms of silence, inside IDEA's 500 ms / 2 s bounds. Outage = t1 − t0, t0 the harness's
@@ -493,6 +504,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   scorebug journal stays well inside memory and a few seconds of replay.
 
 ## E-045: Time-dependent state
+> **Rev 3.** Caleb accepted the limitation (D-015, Q2 option a): a third-party graphic's self-run state is exact on a
+> failover only while the standby's copy is live, and it is flagged everywhere else. Review 2 N1 showed the limitation is
+> not confined to double failures; E-052 states its real scope. "Every Designed graphic restores exactly" now rests on the
+> checkpoint protocol in E-056 (consistent cut, timed tail), not on the rev 2 sketch below.
 - **Choice.** Warm promotion keeps internal clocks (the standby ran them). On the cold path, a third-party graphic's internally
   run clock is **not restored** and the instance is flagged on the On-air strip and in Health ("elapsed time not restored").
   Graphics may declare `v_noplayout: {recovery: "checkpoint"}` (OGraf v1 allows `^v_` vendor keys) and implement
@@ -500,7 +515,7 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   path. S9 tries DevTools virtual time for third-party clocks; adopted only if it returns to real time cleanly.
 - **Reason.** OGraf v1 has no get/set-state or seek; review 1's probe lost 1,280.5 ms of a `startClock` clock on replay. Data-
   driven clocks (OES → `gameClock`) are durable input and restore exactly.
-- **Open.** Q2.
+- **Open.** Q2 — decided by Caleb (D-015): option (a), accept + flag + S9, scope per E-052.
 
 ## E-046: Identities, authority and result order
 - **Choice.** `engineRun` (UUIDv7), renderer incarnation `inc` (u64, increasing per channel), a 256-bit launch token per
@@ -520,15 +535,20 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   handoff, diagnostics and the elapsed-time flags.
 
 ## E-048: Pacing acceptance by a receiver-side oracle
+> **Rev 3.** The time-base index `m` (computed in output-period units) is withdrawn: review 2 N2 showed an ideal
+> 60 → 59.94 conversion gives 20 `Δm ≠ 1` transitions per 10,000 frames against 10 skips. E-053 replaces it with a
+> source-domain step check and a lag band. Everything else here stands.
 - **Choice.** A coded fixture draws its rAF counter `n`, a time-base index `m`, and an alpha-only copy of `n`; a separate
   decoder reads pixels only (never noPlayout's counters) at an NDI receiver (and on paint dumps in M1). Numeric thresholds per
   mode and rate (PLAN §5.5): mode A and mode B at 50/25 allow zero repeats, skips, tears, key mismatches and timecode errors;
   mode B at 59.94/29.97 allows exactly the declared 1000:1001 conversion skips (Δn = 2, ≥ 900 frames apart) and is never
   reported as zero-drop. Output counters must agree with the oracle. Eight injected faults must each fail the run.
 - **Reason.** F4: rev 1's "no holes beyond the counted `repeated`" let a counted defect pass and trusted the sender's own tags.
-- **Open.** Q3 (whether a mode-B-only OS meets the soak bar).
+- **Open.** Q3 — decided by Caleb (D-015): option (b), per-OS partial for the soak claim, decided after S1b.
 
 ## E-049: Paint identity, one conversion, per-sender threads
+> **Rev 3.** "Recreate the sender at 2 s" is withdrawn: the sender thread owns the `Sender` while it is inside
+> `submit_video`, and nothing can take it back. E-055 replaces it.
 - **Choice.** Paints are named `(inc, paint_seq)`, slots `k`; nothing infers which begin-frame made a paint. The pacer converts
   the chosen paint once into an immutable FILL/KEY (or Fill+Alpha) snapshot with one `tc(k)`; each NDI sender has its own
   thread, three frames and a one-deep newest-wins queue; the pacer never calls the SDK. Progress monitor: `SenderStall` at
@@ -537,6 +557,8 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   grafton-ndi 3.0.0 docs) delay the clock and the other plane.
 
 ## E-050: Settings apply transaction
+> **Rev 3.** E-054 adds the commit point (the `settings.json` rename) and the outcome of every failure after resources
+> were applied, including a failed rollback.
 - **Choice.** One `settings` actor owns the document and an `effective_rev`; every writer uses `If-Match` (409 on stale).
   Apply = validate (422, nothing changes) → plan → write `settings.pending.json` → apply each step with an undo → commit
   (atomic rename to `settings.json`, then `last-good`), or roll back every applied step, move pending to `rejected/` and
@@ -553,4 +575,77 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   All eight IDEA formats and all three OSes stay required; a CI lane that can't run CEF needs a `preflight` evidence file at
   every milestone commit; reports list passed, skipped and unexercised checks separately (§6.2).
 - **Reason.** F9: rev 1's fallbacks ("label it experimental", "local-only") could close a milestone with a requirement unmet.
-- **Open.** Q4.
+- **Open.** Q4 — decided by Caleb (D-015): all formats stay required.
+
+---
+
+# Rev 3 entries (review 2)
+
+## E-052: Recovery fidelity per replica copy and standby eligibility
+- **Context.** Review 2 N1: rev 2 treated an alive, `Synced` standby as holding the same state. After the first failover
+  the replacement standby has *replayed* the instances already on air, so a third-party graphic's self-run clock in it is
+  short by the clock's age at rebuild. The same holds for web pages that join or reconnect mid-show.
+- **Options.** (a) Track fidelity per page and instance, declare time exposure, flag with a bound, and state exactly when
+  the same-state guarantee holds. (b) A third replica started with the first two (keeps a live copy through two failures;
+  +1 browser per channel, and still fails at the third, so it moves the limit rather than removing it). (c) Refuse or
+  warn on import for undeclared graphics (blocks valid OGraf graphics).
+- **Choice.** (a), within Caleb's D-015 (Q1/Q2). Fidelity `live` / `checkpointed` / `replayed`, recorded by the engine
+  from how it fed each page. Time exposure from `v_noplayout.time` (`"none"`, `{"selfTimedAfter": {"actions", "dataTrue"}}`)
+  or `recovery: "checkpoint"`, in the manifest or a per-package `noplayout.recovery.json` sidecar (hashed into the graphic
+  version); undeclared graphics are self-timed from `load`. Shortfall bound `L = t_rebuild − t_expose`, fixed at rebuild.
+  Standby states Exact / Ready-inexact / Not ready, shown before failure. Exactness returns only by a new generation
+  (re-take) or a checkpoint; never by the divergence check. An inexact standby is still promoted. PLAN §2.13.3a.
+- **Reason.** It makes the approved limitation visible and bounded, keeps every valid OGraf graphic usable, and puts the
+  operator's remedy (re-take in a break, or feed the clock from data) in front of them before the second failure.
+- **Gate.** S7a kill → rebuild → second-kill cases; M3 web late-join clock test; R24.
+
+## E-053: Pacing oracle time base in the source domain
+- **Context.** Review 2 N2: rev 2's `m` was computed in output periods, so a correct 60 → 59.94 conversion fails its row.
+- **Choice.** The fixture draws its rAF timestamp `s` (µs). The decoder checks the median source period, a per-step check
+  `|Δs − Δn·P̂_src| ≤ P̂_src/4`, and a lag band `max − min of (tc − s) ≤ 1.25·P̂_src` (mode A: ≤ `P_out`/4). S1 may widen
+  tolerances to measured jitter, never past a 1.5·`P̂_src` band.
+- **Reason.** An exact-rational model (`~/OrgWork/projects/noplayout/design/oracle_model.py`) gives the ideal conversion
+  10 skips, 0 step errors and a 16.67 ms band at every phase, against 20 failures for rev 2's rule, and both mutations
+  (frozen time base, repeated paint) fail. PLAN §5.5.
+
+## E-054: Settings commit point and post-apply failures
+- **Context.** Review 2 N3: rev 2 did not say what happens when persistence fails after resources were applied.
+- **Choice.** The `settings.json` rename is the commit point; pending stores the candidate's sha256; old resources are held
+  until commit. Before the commit point every failure undoes all resources and reports `503`; after it the change stands
+  and failures (directory fsync, last-good, pending delete) come back as `200` with warnings and Health amber. A failed undo
+  leaves a reported **degraded** state, with the running resource set tracked separately from the committed document.
+  Startup tells a committed leftover (hash match) from an interrupted apply. PLAN §2.11 failure table.
+- **Reason.** Every outcome is one row the tests can assert: API view, running resources, files and next-start result.
+
+## E-055: A non-returning NDI submit recycles the output process
+- **Context.** Review 2 N4: "recreate the sender at 2 s" had no path; the sender thread owns the `Sender` inside
+  `submit_video`, and a thread blocked in a foreign call can't be cancelled.
+- **Options.** (a) Quarantine the stuck thread and start a second same-name sender in-process. (b) Recycle the output
+  process. (c) Wait forever.
+- **Choice.** (b) for stuck (≥ 2 s); nothing recreated for slow (250 ms – 2 s). Loop guard with backoff; channel red after
+  3 recycles in 5 min, retries continue. (a) is tried once in S7b for information only.
+- **Reason.** Process exit is the only termination the OS guarantees and frees the sender, frames and SDK state at once;
+  the renderers are untouched. Cost stated: both planes drop, *est.* 1–3 s receiver reconnect on top of the ≥ 2 s, new
+  timecode epoch. (a) depends on undocumented SDK behaviour and leaks the wedged state for the process lifetime.
+
+## E-056: Declared checkpoint protocol and the Designed time model
+- **Context.** Review 2 N5: rev 2 promised exact Designed clocks without a consistent cut or a time-faithful tail.
+- **Choice.** The host takes a checkpoint only when the instance is quiescent (all its dispatched actions resolved), never
+  delaying an on-air action; the graphic captures state synchronously; the result carries `frontierSeq` and `cutTs`.
+  Restore = `load` → `v_noplayout_restore{state, cutTs, nowTs}` → tail `seq > frontierSeq` with original `ts` and
+  `replay: true` → live. Checkpointing graphics compute time state from action `ts` and `serverNow()`, not
+  `performance.now()` deltas; every Designed graphic does so through noPlayout's runtime library, so its replay is
+  time-faithful by construction. A bad checkpoint falls back to the full journal (copy becomes `replayed`, flagged).
+- **Reason.** A consistent cut plus a time model that does not depend on when an action is executed is what makes "exact"
+  provable; M5's property test and the second-kill test check it. PLAN §2.13.4.
+
+## E-057: PaintStall detected by a forced-repaint probe
+- **Context.** Review 2 N6: "no paint while rAF advances" cannot tell a static scene from a stalled compositor; a static
+  scene has no damage and no paint, and rAF says nothing about pixels.
+- **Choice.** After 100 ms without a paint the renderer calls `BrowserHost::invalidate(PaintElementType::default())` and
+  records the probe in the ring header; the output process raises `PaintStall` if no paint newer than the probe arrives
+  within 250 ms (≤ 400 ms from the last paint). rAF is diagnostics only. Loop guard on repeat stalls after promotion.
+  Cost: one full-view repaint per 100 ms on a fully static scene (≈ 83 MB/s at 1080p).
+- **Reason.** A healthy page answers an invalidate whatever its content, a stalled one cannot, and the judge is the reader of
+  the ring, not the renderer. `invalidate` and `was_resized` exist in the cef 156.7.0 bindings for every target built;
+  behaviour under external begin-frame is the S7a check (R25).

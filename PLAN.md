@@ -1,19 +1,24 @@
 # noPlayout: build plan
 
-- **Status:** design draft **rev 2** for cold review 2 (card t_0d2dd9ce), then Caleb's approval. Nothing here is built yet.
-  Rev 1 (87908b9) got REWORK in cold review 1 (`~/OrgWork/projects/noplayout/reviews/plan-review-1.md`, 11 findings, 4
-  blocking). Every finding is answered in **§ Review 1 disposition** at the end; the requirement questions it raised are in
-  **§ Open questions for Caleb**.
-- **Author:** Franky (CTO). Rev 1 card t_95b8a2c9; rev 2 card t_63bf63cf, 2026-11-26. Branch `design/plan` (local only),
-  with `main` (D-012…D-014) merged in at 96a24c2.
-- **Inputs:** `IDEA.md` (source of truth), `docs/BUILD-BRIEF.md`, `docs/01-decisions.md` **D-001…D-014** (D-009 UI answers,
+- **Status:** design draft **rev 3** for cold review 3 (card t_953b470d, scoped to review 2's findings), then Caleb's
+  approval. Nothing here is built yet. Rev 1 (87908b9) got REWORK in cold review 1 (11 findings, 4 blocking); rev 2
+  (c90763d) got REWORK, converging, in cold review 2 (`~/OrgWork/projects/noplayout/reviews/plan-review-2.md`: 1 blocking
+  N1, 5 should N2–N6, plus an M1 task mismatch). Both are answered in **§ Review 2 disposition** and **§ Review 1
+  disposition** at the end.
+- **Caleb's answers are binding here:** D-015 (2026-11-26) answered Q1–Q5 as recommended, including the N1 scope of Q2
+  (a third-party graphic's self-run clock is exact on the first failover only; replacement standbys and web late
+  joins/reconnects lose replay-age time and are flagged). Rev 3 is written to match. Only Q6 is still open.
+- **Author:** Franky (CTO). Rev 1 card t_95b8a2c9; rev 2 card t_63bf63cf; rev 3 card t_184845fe, 2026-11-26. Branch
+  `design/plan` (local only), with `main` merged in at 96a24c2 (D-012…D-014) and 4e4e538 (D-015).
+- **Inputs:** `IDEA.md` (source of truth), `docs/BUILD-BRIEF.md`, `docs/01-decisions.md` **D-001…D-015** (D-009 UI answers,
   D-010 research picks, D-011 OES-only decoder, D-012/D-014 Basketball package as a public Apache-2.0 fixture with OFL fonts,
-  D-013 OES test corpus from `unc-virtual-score-server` are binding here), Robin's `2026-11-26-noplayout-foundations.md` +
-  addendum, Robin's `2026-10-30-replayserver-ndi-license.md`, Usopp's **`UI.md` rev 3 (final build target)** +
-  `noplayout-mockups.pdf` (24 pages) at `~/OrgWork/projects/noplayout/design/`, cold review 1.
-- **Companion file:** `DECISIONS.md` (engineering decision record, entries E-001…E-051). Where this plan says "E-0nn", the
+  D-013 OES test corpus from `unc-virtual-score-server`, D-015 answers to Q1–Q5 are binding here), Robin's
+  `2026-11-26-noplayout-foundations.md` + addendum, Robin's `2026-10-30-replayserver-ndi-license.md`, Usopp's **`UI.md` rev 3
+  (final build target)** + `noplayout-mockups.pdf` (24 pages) at `~/OrgWork/projects/noplayout/design/`, cold reviews 1 and 2.
+- **Companion file:** `DECISIONS.md` (engineering decision record, entries E-001…E-057). Where this plan says "E-0nn", the
   reasoning is there. Rev 2 supersedes E-008, E-012 (in part) and E-019, and amends E-001, E-006, E-013, E-014, E-017,
-  E-020, E-023 and E-033; the old text is kept and marked.
+  E-020, E-023 and E-033. Rev 3 adds E-052…E-057 and amends E-041, E-043, E-045, E-048, E-049 and E-050. Old text is kept
+  and marked.
 
 Every version below was checked against crates.io / npm on 2026-11-26, and the APIs this plan depends on were read in the
 published crate source at exactly that version (see §3, "Verified"), except where §3 says "version-checked only". Nothing was
@@ -41,8 +46,11 @@ noPlayout is four kinds of process on one machine (rev 2 adds the output process
 All pages (the CEF program pages, preview, web outputs, the editor preview) run one OGraf host runtime, `ograf-host.js`,
 and receive the same ordered, timestamped action stream from the engine over a WebSocket. Only the active renderer's program
 page is authoritative, and only pages holding that renderer's launch token can claim the role. Recovery has an explicit
-contract (§2.13): a live standby restores everything the graphics show, including running internal clocks; a cold restart
-replays the full on-air journal (never silently truncated) and states plainly what it cannot rebuild.
+contract (§2.13). Every copy of a graphic in every page has a recorded **fidelity** (§2.13.3a): a copy that saw the graphic
+live, or that was restored through a declared checkpoint, is exact, running clocks included; a copy rebuilt by replaying the
+journal is exact for data, steps and action effects, but anything a third-party graphic times by itself comes back behind
+by up to its replay age, and that is flagged on the On-air strip (Caleb, D-015). The ≤ 2 s same-state guarantee covers a
+single failure while the standby is exact; the plan says precisely when that is (§2.13.3a).
 
 Build order is IDEA §11 plus one milestone: **M4.5 Data sources** (D-008), between Playout (M4) and Edit (M5).
 
@@ -83,9 +91,10 @@ state from a log that could not hold all of it. Now:
 - the **output process** (no CEF, small) owns the channel clock and the NDI senders. It survives any renderer failure and keeps
   sending the last good frame with fresh timecode, so receivers never lose the source;
 - two **renderer processes** per channel run the same program page and receive the same live action stream. The active one
-  feeds air; the standby paints at a sixth of the rate and is promoted in one or two frames when the active one fails. The
-  standby has executed every action itself, in real time, so its state includes things no log can rebuild (a graphic's own
-  running clock, counters changed by custom actions). After promotion a new standby is started behind it (§2.13).
+  feeds air; the standby paints at a sixth of the rate and is promoted in one or two frames when the active one fails. A
+  standby that has executed an instance's actions itself, in real time, holds state no log can rebuild (a graphic's own
+  running clock, counters changed by custom actions). After promotion a new standby is started behind it; that replacement
+  has *replayed* the instances already on air, which limits what the next failover can restore (§2.13.3a, D-015).
 - Full-rate pixels now cross one process boundary, through shared memory written in the `on_paint` copy that rev 1 already
   had to make (E-042), so there is no extra copy.
 
@@ -179,15 +188,27 @@ and publishes it with its **paint identity**: `{renderer_incarnation, paint_seq,
 `on_paint` calls; it is **not** tied to any begin-frame or output slot, because `on_paint` carries no begin-frame id and CEF
 may coalesce or drop begin-frames (#4311). The output slot `k` is assigned later by the output process (§5.3).
 
+**Paint probe (E-057; review 2 N6).** A static scene legitimately produces no `on_paint` (no damage), so "no new paint" alone
+cannot tell a static graphic from a stalled compositor, and a live rAF counter does not prove pixels needed repainting.
+The renderer therefore forces the question: whenever its program browser has delivered no paint for **100 ms**, the begin-frame
+thread (mode A) or ipc thread (mode B) posts `BrowserHost::invalidate(PaintElementType::default())` (the view; present in
+the cef 156.7.0 bindings for every target we build, `ImplBrowserHost::invalidate`) to the CEF UI thread, and writes
+`{probe_seq, probe_requested_mono_ns}` into its ring's control header (§5.3). CEF answers an invalidate with a full-view
+`on_paint` whatever the scene's damage, so a healthy static scene answers every probe within a frame or two; a stalled GPU
+or compositor answers none, whether rAF is advancing or stopped. The output process, not the renderer, judges the answer
+(§2.13.1 K2g), so a renderer that lies about itself is still caught. Cost: on a fully static scene, one full-view repaint and
+ring copy every 100 ms (≈ 83 MB/s at 1080p, well under the moving-scene rate R2 already budgets). Whether `invalidate`
+produces a paint under `external_begin_frame_enabled` on each OS is an S7a check (mode A posts the next begin-frame as usual).
+
 ### 2.4a Output process internals (`noplayout-output`, one per channel; E-040)
 
 | Thread | Does | Real-time? |
 |---|---|---|
-| pacer | owns the channel clock (§5); at each deadline `T_k` claims the newest complete paint from the **active** renderer's ring, converts it once into an immutable pair snapshot (FILL+KEY, or Fill+Alpha), stamps `tc(k)` and hands it to each sender thread's one-deep queue (newest wins) | yes (elevated) |
-| sender ×1 or ×2 | one thread per NDI sender: `submit_video` of the snapshot for its plane; records `submit_started/returned_mono` and the last `k` submitted (§5.4) | yes |
-| progress monitor | 10 Hz: per-sender submit age, pacer lateness, ring health of both renderers; raises `SenderStall`, `PacerLate`, `ProducerStale` | no |
+| pacer | owns the channel clock (§5); at each deadline `T_k` claims the newest complete paint from the **active** renderer's ring, converts it once into an immutable pair snapshot (FILL+KEY, or Fill+Alpha), stamps `tc(k)` and hands it to each sender thread's one-deep queue (newest wins); checks the active ring's paint-probe header every slot (K2g, §2.13.1) | yes (elevated) |
+| sender ×1 or ×2 | one thread per plane, each owning one `FrameSink` (`NdiSink` from M2; `DumpSink` in M1 and in CI, which writes the frame, `k` and `tc(k)` to disk through the same thread and queue): `submit` of the snapshot for its plane; records `submit_started/returned_mono` and the last `k` submitted (§5.4) | yes |
+| progress monitor | 10 Hz: per-sender submit age, pacer lateness, ring health of both renderers; raises `SenderStall` (slow), `SenderStuck` (non-returning, §5.4), `PacerLate`, `ProducerStale` | no |
 | monitor | program monitor tap (what actually went to air): every *n*-th snapshot → 480×270, checkerboard, JPEG → engine with credits | no |
-| divergence | every 6th slot, compares 64×36 luma thumbnails of the active and standby paints for the same slot (mode A) or for the nearest paints (mode B); persistent difference → `ReplicaDiverged` (§2.13.4) | no |
+| divergence | every 6th slot, compares 64×36 luma thumbnails of the active and standby paints for the same slot (mode A) or for the nearest paints (mode B); persistent difference → `ReplicaDiverged` (§2.13.4). Evidence of difference only; never evidence of equal state (§2.13.3a) | no |
 | ipc | control socket to the engine: `Configure`, `Activate{renderer_incarnation}`, `TestPattern`, `Shutdown`, `Ping`; up: `Hello{epoch}`, `Pong`, `Health`, `Event` | no |
 
 While no fresh paint is available from the active renderer (failover in progress, or a static graphic), the pacer **holds**:
@@ -214,9 +235,12 @@ The runtime:
 - reports each result (`statusCode`, `statusMessage`, `currentStep`, any extra payload) with the action's `seq` and
   `instanceId`/`generation`, in whatever order the graphic's promises resolve (the engine orders them, §2.14);
 - times out a `load` after 10 s and any other action after 5 s, reporting the timeout as an error (never wedges the layer);
+- for graphics that declare `v_noplayout` checkpoints, takes them only at a quiescent cut and restores them with the timed
+  journal tail (§2.13.4, E-056); it never delays an on-air action to take one;
 - sends a **liveness beat** every 100 ms from a `setTimeout` loop on the page's main thread (`Beat{n, rafCount}`), so a
-  JS main-thread hang is visible within a few hundred ms (§2.13.1, kind K3), and `rafCount` separates "static graphic" from
-  "stalled page";
+  JS main-thread hang is visible within a few hundred ms (§2.13.1, kind K3). `rafCount` is **diagnostic only** (Health
+  shows "animation frames stopped" if it stalls while beats continue); it is not a compositor-health signal. Paint health
+  is judged by the paint probe (§2.4, E-057);
 - in test builds only, draws the frame-oracle overlay (§5.5) when a test asks for it. It is off in release builds and
   invisible to graphics.
 
@@ -366,7 +390,8 @@ Rundown: `POST /rundown/take`, `/rundown/next-step`, `/rundown/take-and-advance`
 and Health logs it (Usopp §2.7). Library: `POST /library/import` (multipart zip), `GET /library`. Shows: open/save/list.
 Settings: `GET /settings` (returns the document and its effective revision as `ETag`), `PUT /settings` with `If-Match:
 <revision>` (validated as a whole and applied as one transaction, §2.11: `200` with the new revision, `409` if the revision is
-stale, `422` with per-field errors, `500`/`503` with the failed apply step after a rollback). Data sources:
+stale, `422` with per-field errors, `500`/`503` with the failed apply step after a rollback, `503` with `degraded` if a
+rollback itself failed; a `200` may carry `warnings` for failures after the commit point, §2.11 E-054). Data sources:
 `GET /datasources`, `GET /datasources/{id}/values`, `POST /datasources/{id}/pause|resume`, `PUT/DELETE
 /rundown/items/{itemId}/fields/{field}/override`. Health: `GET /health`, `GET /diagnostics` (the Copy diagnostics bundle,
 secrets removed). Outputs: `POST /outputs/test-pattern {on}`.
@@ -451,23 +476,47 @@ silently.
 2. **Plan.** Diff against effective settings into ordered resource steps, each with an undo: bind a new HTTP listener;
    reconfigure or restart a channel (output process + renderers) with new format/NDI names/mode; start/stop data-source
    transports; RossTalk listener on/off; hotkey map (no resource).
-3. **Persist pending.** `atomic_write(settings.pending.json)`. `settings.json` is untouched.
+3. **Persist pending.** `atomic_write(settings.pending.json)` holding the candidate plus `{candidateRev, sha256}` of the exact
+   bytes step 5 will write. `settings.json` is untouched. If this write fails, nothing has been applied: `503` "settings
+   could not be saved; nothing changed", and the temp file is removed.
 4. **Apply** the steps in order. New resources are acquired **before** old ones are released wherever possible (a new port
-   is bound before the old listener closes; a new NDI sender name is created before the old one is dropped). If any step
-   fails, the applied steps are undone in reverse (channels restarted with their old config, the new listener closed),
-   `settings.pending.json` is moved to `rejected/settings-<utc>.json` with a `.reason.txt` naming the failed step, and the
-   response is `500`/`503` with that step. Effective settings and `effective_rev` stay exactly as before.
-5. **Commit.** `atomic_write(settings.json)` from the candidate, then `atomic_write(settings.last-good.json)`, delete
-   pending, `effective_rev += 1`, emit `settings` event. Old listeners close 2 s later (in-flight requests finish). The app
-   follows a port change through the event.
+   is bound before the old listener closes; a new NDI sender name is created before the old one is dropped), and released
+   old resources are **held until the commit point** where the OS allows it (the old listener, the old sender), so most
+   undos are a cheap drop of the new resource. If any step fails, the applied steps are undone in reverse (channels
+   restarted with their old config, the new listener closed), `settings.pending.json` is moved to
+   `rejected/settings-<utc>.json` with a `.reason.txt` naming the failed step, and the response is `500`/`503` with that
+   step. Effective settings and `effective_rev` stay exactly as before.
+5. **Commit.** (a) `atomic_write(settings.json)` from the candidate: temp write, `fsync`, rename over, `fsync` the
+   directory. **The rename is the commit point** (E-054). (b) `atomic_write(settings.last-good.json)`. (c) delete pending.
+   At the commit point `effective_rev += 1` and the `settings` event is emitted; held old resources are released (old
+   listeners close 2 s later so in-flight requests finish). The app follows a port change through the event.
+
+**Failures during and after apply (E-054; review 2 N3).** Every failure has one declared outcome. The settings actor tracks
+the **running resource set** separately from the committed document, so it always knows whether they match.
+
+| Failure | Relative to commit point | Outcome | Running resources | `GET /settings` | Files left | Next start loads |
+|---|---|---|---|---|---|---|
+| pending write/fsync/rename (step 3) | before | `503`, nothing changed | old | old doc, old rev | settings.json old | old |
+| a resource step (step 4) | before | undo all, `500`/`503` naming the step | old | old doc, old rev | pending → `rejected/` | old |
+| `settings.json` temp write, `fsync` or rename (5a) | before | **undo all resources**, `503` "applied, but could not be saved; changes undone" | old | old doc, old rev | temp removed; pending → `rejected/` (reason: save failed) | old |
+| directory `fsync` after a successful rename (5a, Unix) | after | committed; `200` with warning "saved, but the disk did not confirm it; after a power cut the previous settings may come back"; dir `fsync` retried every 5 s; Health amber | new | new doc, new rev | settings.json new, pending present | new; or, if the rename was lost to a power cut, old (pending's hash ≠ settings.json → "interrupted apply" → `rejected/`), which is the outcome the warning named |
+| `settings.last-good.json` write (5b) | after | committed; `200` with warning "last-good not updated"; Health amber; last-good rewritten at the next successful commit or startup apply | new | new doc, new rev | settings.json new, last-good stale | new |
+| pending delete (5c) | after | committed; `200`; logged | new | new doc, new rev | pending left over | new; pending's hash = settings.json's → deleted as a committed leftover, nothing rejected |
+| an **undo** fails during rollback (old port taken meanwhile, old NDI name can't be recreated, old channel config won't restart) | before | **degraded**: `503` naming the failed step and the failed undo; Health red; top-bar light "Settings not fully applied" (Usopp's wording) | a mix, listed per resource | old doc, old rev, plus `degraded: [{step, error}]` | settings.json old; candidate in `rejected/` with both reasons | old |
+
+In the **degraded** state, settings writes are still accepted: a new `PUT` plans from the running resources (not from the old
+document), and "Reapply saved settings" retries the committed document. Neither the API nor the UI ever reports success for
+an apply that did not reach the commit point.
 
 **Last-good** means *the last settings that were successfully applied* (live or at startup), never merely "parsed". It is
 first created on the first successful startup apply (including the wizard's first save on a clean profile).
 
 **Startup.**
-- `settings.pending.json` present → an apply was interrupted (crash or power loss). It is moved to `rejected/` with reason
-  "interrupted apply"; startup continues with `settings.json`. A crash after step 5's first write leaves the new
-  `settings.json` and a stale last-good, which is fine: it is applied normally and last-good is rewritten.
+- `settings.pending.json` present → compare its recorded `sha256` with `settings.json`'s bytes. **Equal:** the apply
+  committed and only the clean-up was lost; pending is deleted and logged. **Different:** an apply was interrupted before
+  its commit point (crash or power loss); pending is moved to `rejected/` with reason "interrupted apply" and startup
+  continues with `settings.json`. A crash after the commit point leaves the new `settings.json` and a stale last-good,
+  which is fine: it is applied normally and last-good is rewritten.
 - Parse → if `schemaVersion` is older: copy the file to `backups/settings.v<N>.<utc>.json` first, migrate in memory, validate,
   apply, then commit as the current version. If the migrated document fails validation or apply, the backup and the
   original stay, and the last-good path below is used.
@@ -500,7 +549,7 @@ Other persistence:
 - Host-protocol authority (which page's results count) is not a user-facing access setting; it is bound to launch tokens and
   renderer incarnations in §2.14, and holds even on an intentionally open LAN.
 
-### 2.13 Recovery contract (E-043, E-044, E-045; review 1 F1, F2)
+### 2.13 Recovery contract (E-043, E-044, E-045, E-052, E-055…E-057; review 1 F1, F2; review 2 N1, N4–N6)
 
 IDEA §3/§6/§9: a crashed renderer is restarted and its state re-sent; heartbeat every 500 ms, restart when missed for 2 s;
 crash test "kill the renderer process mid-show; output must recover to the same state within 2 s". This section defines
@@ -513,17 +562,24 @@ arbitrary OGraf package.
 |---|---|---|---|---|
 | **K1** | active renderer's CEF browser process exits (crash, `kill -9`, `TerminateProcess`) | engine's child-process handle (tokio `Child::wait`: SIGCHLD/pidfd on Unix, process handle on Windows) | ≤ 20 ms | warm promotion |
 | **K2** | a CEF child of the active renderer exits (render subprocess killed or crashed) | `on_render_process_terminated` → `Event::PageTerminated` | ≤ 50 ms | warm promotion; the old renderer is killed and rebuilt as standby |
-| **K2g** | the active renderer's GPU process crashes or stalls (Chromium relaunches it; paints stop) | output process: no new paint for 250 ms while the page's `Beat` reports `rafCount` advancing (`PaintStall`) | ≤ 300 ms | warm promotion |
+| **K2g** | the active renderer's GPU process crashes or stalls, or paints stop reaching the ring for any other reason (Chromium relaunches the GPU process; paints stop) | output process: a **paint probe** (§2.4, E-057) has been outstanding for 250 ms with no paint newer than the probe in the ring (`PaintStall`). Independent of the scene's damage and of `rafCount`; a static scene answers every probe | ≤ 400 ms from the last paint (100 ms idle before the probe + 250 ms + one slot) | warm promotion; loop guard below |
 | **K3a** | the active page's JS main thread hangs; the standby keeps beating | engine: no `Beat` from the active page for 500 ms (2,000 ms while a `load` is pending on that page, since graphics may do heavy synchronous setup) | ≤ 500 ms (≤ 2 s during load) | warm promotion |
 | **K3b** | **poison action**: an action that hangs every replica (the same graphic bug runs in the standby too) | K3a on the active, then the standby misses its beats within 1 s, and both stopped after the same last-dispatched `seq` | ≤ 1.5 s | cold restore **without** that action (quarantined, §2.13.3) |
 | **K4** | the active renderer's CEF UI thread or whole process hangs (no crash) | control heartbeat every 100 ms; the ipc thread also posts a task to the CEF UI thread every 100 ms and reports its latency. No Pong, or UI-thread latency > 500 ms | ≤ 500 ms | warm promotion; old process killed |
-| **K5** | one NDI sender's `submit_video` blocks (SDK backpressure, a stuck receiver) | output process progress monitor: submit in flight > 250 ms (`SenderStall`) | ≤ 250 ms | the other plane continues; after 2 s that sender is recreated under the same name; a second stall within 10 s restarts the output process (K6) |
+| **K5** | one NDI sender's `submit_video` blocks (SDK backpressure, a stuck receiver) | output process progress monitor: submit in flight > 250 ms (`SenderStall`); in flight ≥ 2 s (`SenderStuck`) | ≤ 250 ms / 2 s | **slow** (returns within 2 s): that plane misses frames, the other plane and the sender's ownership are untouched, nothing is recreated. **Stuck** (≥ 2 s): the engine recycles the whole output process (kill, respawn, ≈ K6); see §5.4 (E-055) for why and what it costs |
 | **K6** | the output process exits or hangs | engine child handle, or no Pong for 500 ms | ≤ 500 ms | respawn the output process (no CEF; renderers keep painting into their rings); NDI sources reappear and receivers reconnect |
 | **K7** | the engine exits | the app's supervisor | as E-033 | supervised engine restart, cold restore of every channel (R17, 5 s budget) |
 
 IDEA's watchdog numbers are kept as upper bounds and tightened: the control heartbeat runs every 100 ms (≤ 500 ms as IDEA
 says), and a renderer is replaced after 500 ms of missed heartbeat, which is always before IDEA's 2 s. Failing over early is
-safe because promotion keeps all state; the cost of a false alarm is a few held frames.
+cheap: the cost of a false alarm is a few held frames plus a standby rebuild, and the rebuild turns the instances already on
+air into replayed copies on the new standby (§2.13.3a). That is why detectors must not fire on healthy states (the static-scene
+control in §2.13.6), not merely fire fast.
+
+**Loop guard (K2g and any repeat).** If a newly promoted renderer fails the same way within 10 s of its promotion (for
+example a machine-wide GPU fault that stalls both copies), the engine does not promote back and forth. It holds the last
+frame, cold-restores onto a fresh renderer up to 3 times with 2 s / 5 s / 10 s backoff, then sets the channel red
+("Renderer can't draw") with the output still holding. Health counts every attempt.
 
 **Measurement origin (t0)** for every recovery test: the harness's monotonic clock reading taken immediately before it
 injects the fault (the `kill`/`TerminateProcess` call, `SIGSTOP`, the dispatch `ts` of a test `hang` action, or a
@@ -548,58 +604,175 @@ For every live instance the engine keeps a **journal**: `load` (graphic id + ver
   replay time (measured replay rate from S7). Above 50,000 entries for one instance Health warns ("Restoring Scorebug after a
   crash would take about 9 s"); nothing is dropped.
 - Persistence: appended to `shows/<show-id>.onair.jsonl` (one line per entry, fsync debounced 200 ms) and dropped for an
-  instance when it is disposed. The show's `onAir` block points at it. Engine restarts and the cold-start restore prompt
-  read it.
+  instance when it is disposed. Declared checkpoints (E-056) are journal entries too; a rebuild starts from the newest valid
+  one and replays only the tail after its `frontierSeq`. The show's `onAir` block points at it. Engine restarts and the
+  cold-start restore prompt read it.
 
-#### 2.13.3 Restore paths and what each guarantees
+#### 2.13.3 Restore paths
 
 - **Warm promotion** (K1, K2, K2g, K3a, K4). The engine sends `Activate{inc}` to the output process (it reads the standby's
   ring from the next slot) and `Role{active}` to the standby (full paint rate; its program page's results become
   authoritative at a `seq` barrier, §2.14). Until the first fresh paint arrives, the output holds the last good frame. The
-  failed renderer is killed (whole process tree) and a **new standby** is started and cold-restored behind it (Health
-  "Standby: rebuilding", then "ready"). The preview browser always lives in the standby: at promotion the new active closes
-  its preview browser and the new standby opens one, so the Preview monitor shows "Preview restarting…" for the rebuild
-  (seconds; it is not on air).
-- **Cold restore** (no ready standby: a second fault during a rebuild, K3b, K7, a format change, standby turned off). A new
-  renderer gets a snapshot: per layer, `load(dataAtLoad)` then the full journal replayed in order with
-  `skipAnimation: true`, then the live stream (§2.14 handoff). For **K3b** the action in flight when both replicas hung is
-  marked `quarantined` and left out of the replay; the instance is restored to its state before that action, and the On-air
-  strip shows "‘Show message’ froze this graphic and was skipped". The output holds the last good frame throughout.
-- **Late join / reconnect** of a web page or the preview: same as cold restore, into that page only. Never authoritative.
+  failed renderer is killed (whole process tree) and a **replacement standby** is started and rebuilt behind it (Health
+  "Standby: rebuilding", then its eligibility, §2.13.3a). The preview browser always lives in the standby: at promotion the
+  new active closes its preview browser and the new standby opens one, so the Preview monitor shows "Preview restarting…"
+  for the rebuild (seconds; it is not on air).
+- **Cold restore** (no promotable standby: a second fault during a rebuild, K3b, K7, a format change, standby turned off). A
+  new renderer gets a snapshot: per layer, `load(dataAtLoad)`, then the instance's declared checkpoint restore if it has one
+  (E-056), then the journal (or its tail after the checkpoint) replayed in order with `skipAnimation: true`, then the live
+  stream (§2.14 handoff). For **K3b** the action in flight when both replicas hung is marked `quarantined` and left out of
+  the replay; the instance is restored to its state before that action, and the On-air strip shows "‘Show message’ froze
+  this graphic and was skipped". The output holds the last good frame throughout.
+- **Rebuild of a replacement standby, late join and reconnect** of a web page or the preview use the cold-restore procedure
+  into that page only. None of them is authoritative while it rebuilds.
 
-| State class | Warm promotion, standby saw the instance live ("exact") | Warm promotion, standby joined later ("rebuilt") | Cold restore, late join |
+#### 2.13.3a Recovery fidelity and standby eligibility (E-052; review 2 N1; Caleb D-015 Q1/Q2)
+
+Rev 2 treated "the standby is alive and has sent `Synced`" as "the standby holds the same state". Review 2 showed that is false
+after the first failover: the replacement standby rebuilt the instances already on air by replay, so a third-party graphic's
+own clock in it is short by however long that clock had been running at rebuild time. Rev 3 tracks this explicitly.
+
+**Fidelity of one copy.** For every page `p` (each renderer's program page, each web output, the preview) and every live
+instance `i`, the engine records how `p` came to hold `i`:
+
+| Fidelity | How the copy was made | Exact for |
+|---|---|---|
+| `live` | `p` executed `load(i)` and every later action of `i` as they were issued, in real time (no rebuild of `p` since `i` was loaded) | everything, running self-timed state included, within the action-delivery skew between pages (target ≤ 1 frame, measured in S7a) |
+| `checkpointed` | `p` restored `i` from a declared checkpoint plus the timed tail (E-056, §2.13.4) | everything, by the graphic's own declaration; for noPlayout-built (Designed) graphics by construction, and tested |
+| `replayed` | `p` rebuilt `i` by replaying its journal with `skipAnimation` | durable inputs (graphic version, data incl. data-source fields, layers, cue, step/phase) and the effects of every dispatched action (Basketball `addPoints` ×257). **Not** time a graphic runs by itself (below) |
+
+**Time exposure of an instance.** Whether a `replayed` copy is exact depends on whether the graphic keeps time by itself. The
+engine cannot see inside a third-party graphic, so it uses the graphic's declaration, and assumes the worst without one:
+
+- `"v_noplayout": {"time": "none"}`: nothing the graphic shows depends on elapsed time except in/out animations (a replayed
+  copy lands on their end state). A replayed copy is **exact**.
+- `"v_noplayout": {"time": {"selfTimedAfter": {"actions": ["startClock"], "dataTrue": ["clockRunning"]}}}`: the graphic keeps
+  its own time only after one of the listed custom actions was dispatched, or while one of the listed data fields has been
+  truthy, since `load`. A replayed copy whose journal has none of those is **exact**; otherwise it is exposed from the
+  first such event.
+- `"v_noplayout": {"recovery": "checkpoint"}`: copies are `checkpointed`, never plain `replayed` (§2.13.4).
+- **No declaration** (any third-party graphic by default): the instance is treated as self-timed from its `load`.
+
+Declarations come from the graphic's manifest (`^v_` keys are allowed by OGraf v1, §2.13.4) or from an optional per-package
+sidecar, `noplayout.recovery.json` next to the manifests, so a package we cannot edit (third-party), or one we keep exactly as
+supplied (the Basketball fixture, D-012's sha256, so tests exercise what Caleb ships), can still be declared. The sidecar is
+hashed into the graphic version; Health shows
+"recovery declared by sidecar". A wrong declaration produces a wrong "exact" claim, so the fixture declarations are covered
+by the recovery tests (§2.13.6). `actions` may name OGraf's own actions too (`playAction`). For the Basketball package the
+sidecar declares `bball-scorebug` as `selfTimedAfter {actions: [startClock], dataTrue: [clockRunning]}`, `bball-ticker` as
+`selfTimedAfter {actions: [playAction]}` (it flips items on its own `dwellSeconds` timer, so a replayed copy shows a
+different item), and the other four as `time: none`. Checked in the sources: only `bball-scorebug` and `bball-ticker` call
+the base library's `setTimer`/`setRepeat`; the rest time only their in/out and step animations.
+
+**Time shortfall bound.** For an exposed instance `i` replayed into page `p` at engine time `t_rebuild`, with `t_expose` the
+`ts` of its first self-timing event (its `load` if undeclared), the copy's self-run time can be short by up to
+**`L(p, i) = t_rebuild − t_expose`**. The bound is fixed at rebuild: after it, the copy keeps time at the right rate, so the
+error neither grows nor heals. It grows with how old the instance was when `p` was rebuilt (its *replay age*), not with the
+time since the failure. Example: a self-running Basketball game clock started at the tip; the first renderer failure is at
+8:00 of the half. The replacement standby is rebuilt at about 8:02, so `L = 8 min 2 s` for the scorebug in that standby.
+A second failure at any later point in the half puts a clock on air that shows 8 min 2 s more time remaining than the real
+clock; the On-air strip says so (below). Data-fed clocks (the Basketball scorebug with `clockRunning: false` and `gameClock`
+pushed from OES, D-008) have no exposure, so `L = 0` on every path.
+
+**Standby eligibility.** Three states, recomputed on every load, dispose, rebuild and divergence event, shown on the On-air
+strip's standby indicator and in Health *before* any failure:
+
+| State | Condition | On the next active-renderer failure (K1, K2, K2g, K3a, K4) |
+|---|---|---|
+| **Exact** | the standby is running, has sent `Synced` for the current `seq`, beats, is not `diverged`, and for every on-air instance its copy is `live`, `checkpointed`, or `replayed` with no exposure | warm promotion; ≤ 2 s (targets §2.13.5) **and the same state in every class**. This is the guarantee Caleb approved (D-015 Q1) |
+| **Ready, inexact** | as Exact, except one or more on-air instances are `replayed` with exposure | warm promotion, same ≤ 2 s; durable inputs and action effects identical; each exposed instance comes back with its self-run time short by up to its `L`, and is flagged on the On-air strip ("Scorebug clock may be up to 8 min 2 s behind", Usopp's wording) |
+| **Not ready** | rebuilding, not yet `Synced`, not beating, `diverged` and not yet rebuilt, or absent | cold restore (§2.13.3), ≤ 2 s target not guaranteed; exposed instances flagged with `L` = the replay age at that restore |
+
+The standby indicator reads "Standby: exact" (green), "Standby: ready — not exact for Scorebug clock (up to 8 min 2 s)"
+(amber) or "Standby: rebuilding / not ready" (amber/red), so the operator learns of an inexact standby while there is still
+time to act, not after the second failure.
+
+**When exactness comes back.** An inexact copy of `i` becomes exact again only when:
+1. `i` ends and is loaded again (taken out and back in, a new `generation`): every page then holds the new instance `live`.
+   This is the operator's remedy, and the indicator says so ("re-take Scorebug in a break to make the standby exact");
+2. `i` has a declared checkpoint: the replacement standby restores it `checkpointed` during its rebuild, so it is never
+   inexact in the first place; or
+3. `i` is disposed with no successor.
+
+Nothing else restores it: rebuilding the standby again replays again, and the divergence check (§2.13.4) can prove a copy
+differs but never that it matches, so it is never used to declare a copy exact. If a copy cannot be made exact, the standby
+stays **Ready, inexact** and is still promoted on a failure, because it is still faster than a cold restore and identical
+in everything but the flagged clocks.
+
+**Web late join and reconnect.** Web output pages follow the same rules per page. A web output opened (or reconnecting) at
+time `t_join` holds every exposed instance `replayed` with `L = t_join − t_expose`: a self-running scorebug clock in a web
+output opened 15 min after the tip runs 15 min short in that page for as long as that instance lives. The web output's row
+in Outputs, Health and (if that web output is marked on-air) the On-air strip carry the flag. Data-fed and Designed clocks
+are exact in web outputs too (`L = 0`). Web pages never feed NDI, so this never changes the program output.
+
+**What is guaranteed, in one paragraph (D-015).** A single failure of the active renderer with an **Exact** standby restores
+the same picture, running clocks included, within 2 s. That holds for the first failure of the session, and again after
+any rebuild for which the standby returns to Exact (all instances on air are data-fed, declared `time: none`, checkpointed,
+or were loaded after the rebuild). For a third-party graphic that keeps its own time and was on air before the rebuild, the
+second failure is still fast and still keeps scores, steps and data, but its own clock can be short by the replay age `L`,
+and that is flagged before and after the failure. Live clocks therefore belong in data (OES) or in noPlayout-built graphics,
+which are exact on every path. If S9 succeeds (time-faithful replay, §2.13.4), `replayed` copies of third-party graphics
+gain a fourth fidelity, `replayed-timed`, that counts as exact, and the Ready-inexact state becomes rare; nothing is planned
+on that.
+
+| State class | `live` copy | `checkpointed` copy | `replayed` copy (replacement standby, cold restore, late join) |
 |---|---|---|---|
 | Durable inputs: graphic version, data incl. data-source fields, layers, cue, step/phase as committed | exact | exact | exact |
-| Effects of every dispatched action, e.g. Basketball `addPoints` ×257 changing the score through its own `updateAction` | exact (executed live) | exact (uncapped journal) | exact (uncapped journal), for graphics that are deterministic given the same action sequence |
-| Time-dependent internal state: a clock started by `startClock`, timers, animations started by an action | exact within action-delivery skew between replicas (target ≤ 1 frame, measured in S7) | not restored, flagged, until the replica-divergence check shows it matches on screen | **not restored**, flagged "elapsed time not restored: startClock 1 min 12 s ago" on the On-air strip and in Health (see §2.13.4 for Designed graphics and the S9 attempt) |
-| Non-deterministic graphics (random numbers, external fetches) | as live | may differ; divergence flagged | may differ; divergence flagged when detected |
+| Effects of every dispatched action, e.g. Basketball `addPoints` ×257 changing the score through its own `updateAction` | exact (executed live) | exact | exact (uncapped journal), for graphics that are deterministic given the same action sequence |
+| Time a graphic runs by itself: a clock started by `startClock`, timers, a ticker's scroll position | exact within skew (≤ 1 frame target) | exact (E-056) | exact if no exposure; otherwise short by up to `L`, flagged |
+| Clocks fed from data, and every noPlayout-built (Designed) graphic | exact | exact | exact |
+| Non-deterministic graphics (random numbers, external fetches) | as live | as declared | may differ; divergence flagged when detected |
 
 The flags are the point: when noPlayout cannot rebuild something, the operator is told on the On-air strip, not only in a
-log. A Health counter alone (rev 1) is not enough. (All operator-facing strings in §2.13 are placeholders; Usopp owns the
-wording and placement, §9.)
+log. (All operator-facing strings in §2.13 are placeholders; Usopp owns the wording and placement, §9.)
 
-#### 2.13.4 Time-dependent state, declared checkpoints, replica divergence
+#### 2.13.4 Declared checkpoints, the Designed time model, replica divergence
 
-- OGraf v1 has no way to ask a real-time graphic for its internal state or to seek its clock. noPlayout therefore cannot
-  restore elapsed time inside an arbitrary third-party graphic on a cold path. Graphics whose clocks are **driven by data**
-  (the Basketball scorebug with `clockRunning: false` and `gameClock` pushed from the OES source, D-008) restore exactly,
-  because the clock value is durable input. Q2 asks Caleb to accept this limitation for internally-run clocks.
-- **Declared checkpoints.** The OGraf manifest schema at 945f8bb allows vendor keys matching `^v_.*` (checked in
-  `v1/specification/json-schemas/graphics/schema.json`). A graphic may declare `"v_noplayout": {"recovery": "checkpoint"}`
-  and implement two custom actions: `v_noplayout_checkpoint` (returns its internal state as JSON in the result payload) and
-  `v_noplayout_restore {state, checkpointTs, nowTs}`. For such graphics the engine checkpoints every 10 s or 100 actions
-  and replays `load + restore + journal tail`, which is equivalent by the graphic's own declaration. With the server
-  timestamps (§4.3) a restored clock continues at the correct elapsed time. **Every Designed graphic exported by M5 declares
-  and implements this**, so noPlayout's own graphics restore exactly on every path. `"v_noplayout": {"updateCompaction":
-  true}` likewise allows merging consecutive updates. Third-party graphics without these keys get the full journal.
-- **S9 (spike, not relied on):** time-faithful cold replay through the DevTools virtual-time API (`Emulation.setVirtualTimePolicy`
-  via `BrowserHost::execute_dev_tools_method`, present in cef 156.7.0): replay the journal with virtual time advanced by the
-  recorded `ts` deltas, then return to real time. Fails if the switch back to real time makes `performance.now()` jump or
-  breaks animations; then the limitation above stands.
+- OGraf v1 has no way to ask a real-time graphic for its internal state or to seek its clock, so noPlayout cannot rebuild
+  elapsed time inside an arbitrary third-party graphic by replay (§2.13.3a). Clocks **driven by data** restore exactly
+  because the clock value is durable input. Caleb accepted this limitation for third-party self-run clocks (D-015 Q2).
+- **Declared checkpoints (E-056; review 2 N5).** The OGraf manifest schema at 945f8bb allows vendor keys matching `^v_.*`
+  (checked in `v1/specification/json-schemas/graphics/schema.json`). A graphic may declare
+  `"v_noplayout": {"recovery": "checkpoint"}` and implement two custom actions, `v_noplayout_checkpoint` and
+  `v_noplayout_restore`. The protocol:
+  1. **Consistent cut.** The engine asks the authoritative page's host runtime for a checkpoint of instance `i` every 10 s
+     or 100 actions. The host takes it only when `i` is **quiescent**: every action of `i` it has dispatched has resolved.
+     It never holds back an on-air action to get there; if `i` is not quiescent, it retries at the next action boundary
+     (Health warns "checkpoint overdue" after 30 s, and the journal tail simply stays longer). At the cut the host calls
+     `v_noplayout_checkpoint`; the graphic must build its state object synchronously, before its first `await`, so no other
+     action of `i` can interleave (JS runs one task at a time). The host stamps the result with
+     `frontierSeq` (the highest `seq` of `i` dispatched and resolved before the cut) and `cutTs` (server time of the cut, from
+     the page's `TimeSync` offset, §4.3). The engine stores `{state, frontierSeq, cutTs}` in the journal and keeps the
+     journal tail `seq > frontierSeq`.
+  2. **Restore.** `load(dataAtLoad)` → `v_noplayout_restore {state, cutTs, nowTs}` → tail actions `seq > frontierSeq` in
+     order, each with its **original `ts`** and `replay: true`, with `skipAnimation: true` → live stream. A checkpoint
+     whose `frontierSeq` is not a resolved action of `i`, or that fails to restore, is discarded and the full journal is
+     used (the copy is then `replayed`, and flagged by the §2.13.3a rules).
+  3. **Time-faithful tail.** Restoring the state object puts the graphic at `cutTs`; the tail must not lose the time
+     between `cutTs` and now. A graphic that declares checkpoints must therefore compute its time-dependent state from
+     action `ts` and the host's `serverNow()`, not from its own `performance.now()` deltas: a running clock is stored as
+     `{running, valueAtTs, ts}` and displayed as `valueAtTs ± (serverNow() − ts)`. Replaying `startClock` with its original
+     `ts` then yields the same displayed value as the live copy.
+- **The Designed time model.** Every graphic exported by M5's editor uses this time model through noPlayout's runtime
+  library (`serverNow()` and `ts` are supplied by `ograf-host.js`; exported graphics run in other OGraf hosts using the
+  same values from `performance.now()` and the receipt time). Every Designed graphic declares `recovery: "checkpoint"`, so
+  noPlayout's own graphics are `checkpointed` or `live` in every page and restore exactly on every path. Acceptance
+  (M5): a property test drives random action sequences with random `ts` gaps, clock starts/stops and checkpoints into a
+  live page and, at random instants, into a freshly restored page, and requires identical rendered state (clock values
+  equal to the displayed unit) at the same server time; plus kill → rebuild → wait → second kill with a Designed clock
+  graphic on air, which must show no shortfall.
+- `"v_noplayout": {"updateCompaction": true}` likewise allows merging consecutive updates. Third-party graphics without these
+  keys get the full journal.
+- **S9 (spike, not relied on):** time-faithful replay of third-party graphics through the DevTools virtual-time API
+  (`Emulation.setVirtualTimePolicy` via `BrowserHost::execute_dev_tools_method`, present in cef 156.7.0): replay the journal
+  with virtual time advanced by the recorded `ts` deltas, then return to real time. Fails if the switch back to real time
+  makes `performance.now()` jump or breaks animations; then the §2.13.3a limitation stands as approved.
 - **Replica divergence.** Every 6th slot the output process compares 64×36 luma thumbnails of active and standby paints. A
-  difference above tolerance for 2 s marks the standby "diverged" (amber). A diverged standby is rebuilt; if it diverges again
-  for the same instance, that instance is labelled non-deterministic in Health and the standby keeps running (it is still
-  the better recovery option).
+  difference above tolerance for 2 s marks the standby "diverged" (Not ready, §2.13.3a). A diverged standby is rebuilt; if
+  it diverges again for the same instance, that instance is labelled non-deterministic in Health and the standby is promoted
+  on a failure anyway (it is still the better recovery option), as Ready, inexact for that instance. A matching thumbnail
+  is never taken as proof that two copies hold the same state: a stopped clock, a hidden counter or a layer off-screen
+  look the same while differing.
 
 #### 2.13.5 Time budget per stage (estimates until S7 measures them)
 
@@ -615,9 +788,12 @@ wording and placement, §9.)
 | NDI transport + receiver decode | ≤ 50 ms, measured | ≤ 50 ms | ≤ 50 ms |
 | **Total, target / fail** | **≤ 150 ms / > 500 ms** | **≤ 650 ms / > 1,000 ms** | **≤ 2,000 ms target, not guaranteed** (est. 0.6–2.5 s) |
 
-The IDEA crash test (one kill mid-show) always takes the warm path, so the 2 s bound is met with a wide margin if S7 confirms
-the estimates. The cold path is reached only after a second fault within a few seconds, a poison action, an engine death or a
-deliberate channel restart; its time is measured and reported, and Q1 asks Caleb whether ≤ 2 s must hold there too.
+The IDEA crash test (one kill mid-show) takes the warm path with an **Exact** standby, so the 2 s same-state bound is met
+with a wide margin if S7 confirms the estimates. The cold path is reached only when the standby is **Not ready** (§2.13.3a):
+a second fault inside the replacement's rebuild window (est. 0.6–2.5 s, the cold-restore column), a poison action, an
+engine death or a deliberate channel restart. Its time is measured and reported as best effort (D-015 Q1). Note that the
+*time* limitation for third-party self-run clocks is **not** confined to that short window: it applies to every later
+failure served by a replacement standby, with the replay-age bound `L` of §2.13.3a.
 
 **Gate (not a fallback):** S7 runs in M1 on Windows 11, macOS arm64 and Linux (and the macOS Intel CI lane, informational),
 with the Basketball show's on-air set (scorebug + ticker + sponsor bug). If the warm path misses its fail line on a supported
@@ -627,15 +803,36 @@ OS, the architecture is revisited before M2 starts. A failed M6 crash test is no
 - Basketball `addPoints`: load `homeScore: 10`, play step 0, `addPoints(home, 1)` ×257. Kill the active renderer (K1): the
   receiver shows **267** at step 0. Repeat with the standby disabled (forces the cold path): still **267** (uncapped
   journal). Rev 1's design produces 10 here (review 1's probe).
-- Basketball `startClock`: start a 60 s game clock, wait 20 s, K1: the receiver's clock region matches a reference render of
-  0:40 ±1 displayed unit; cold path: the instance carries the "elapsed time not restored" flag (the test asserts the flag, not
-  a silent 1:00).
+- Basketball `startClock` (self-run): start a 60 s game clock, wait 20 s, K1: the receiver's clock region matches a reference
+  render of 0:40 ±1 displayed unit; cold path: the instance carries the elapsed-time flag with `L` ≈ 20 s (the test
+  asserts the flag and its bound, not a silent 1:00).
+- **Kill → rebuild → wait → second kill (N1)**, each with the standby indicator checked before every kill:
+  1. self-run Basketball clock (`startClock` at t = 0, 10 min game clock): K1 at t = 20 s → clock exact (standby `live`);
+     replacement rebuilt by ≈ t = 22 s; indicator must read *Ready, inexact, up to ≈ 22 s* before the second kill; wait
+     60 s; K1 again → the clock is short by `L` within ±1 displayed unit of the recorded bound, and the On-air flag names it.
+     The test fails if the standby claims Exact, or if the shortfall exceeds the flagged `L`;
+  2. the same clock, but take the scorebug out and back in after the rebuild → indicator returns to *Exact*; second K1 →
+     exact;
+  3. data-fed scorebug (`clockRunning: false`, `gameClock` pushed by the OES simulator, D-013): both kills exact, indicator
+     *Exact* throughout;
+  4. a Designed clock graphic (M5): both kills exact, indicator *Exact* throughout (`checkpointed`);
+  5. Basketball ticker on air with 4 items: after the rebuild the indicator reads *Ready, inexact* for the ticker; an
+     undeclared copy of the recovery-probe fixture behaves the same with `L` counted from its `load`.
 - Recovery-probe fixture (coded OGraf graphic in `fixtures/`): renders patches encoding its custom-action counter, a data
-  hash, its step and an internal clock; used for every kind K1–K6 with exact expected values.
+  hash, its step and an internal clock; used for every kind K1–K6 with exact expected values. Also packaged with a sidecar
+  that declares it `time: none` (expects *Exact* after a rebuild) and with none (expects *Ready, inexact*), which tests the
+  declaration path itself.
 - More than 50,000 journal entries on one instance; an `ended` instance; a `stepCount: -1` graphic at a dynamic step; a
   graphic whose `load` takes 1.5 s (no false K3a); poison action (K3b) with quarantine message.
-- Late join and reconnect, pixel-compared with the authoritative page after settle (M3).
-- A Designed graphic (M5) with an internal clock: exact elapsed time on the cold path via its declared checkpoint.
+- Static-scene control: a fully static graphic on air for 10 min produces no `PaintStall`, no promotion and no paint-probe
+  miss (E-057); a forced GPU stall (S7a's injection) is detected at ≤ 400 ms with rAF both advancing and stopped.
+- Late join and reconnect, pixel-compared with the authoritative page after settle (M3), plus the **web late-join clock
+  test**: start the self-run Basketball clock, open a web output 60 s later → that page's clock is short by ≈ 60 s and the
+  web output carries the flag with `L` ≈ 60 s; with the data-fed scorebug and with a Designed clock the late-joined page
+  matches the program to the displayed unit and carries no flag; disconnect and reconnect the web page 30 s later → new
+  `L` from the reconnect time.
+- A Designed graphic (M5) with an internal clock: exact elapsed time on the cold path via its declared checkpoint, including
+  a restore whose tail contains `startClock` and `stopClock` after the cut (E-056).
 
 ### 2.14 Ordering, authority and results (E-046; review 1 F6)
 
@@ -809,6 +1006,13 @@ flags that need elapsed times ("startClock 1 min 12 s ago").
   reports `lagMs` (receipt time − `ts`) in its `Beat`, so Health can show per-page lag.
 - Up `Result{seq, instanceId, generation, statusCode, statusMessage?, currentStep?, payload?}`, `Beat{n, rafCount, lagMs,
   lastAppliedSeq}` every 100 ms, `Synced{seq}`, `PageError{text}`.
+- Rev 3 (E-052, E-056): down `Checkpoint{instanceId, generation}` (authoritative page only) → up
+  `CheckpointResult{instanceId, generation, frontierSeq, cutTs, state}` or `CheckpointDeferred{instanceId}` (not quiescent).
+  A `Snapshot` layer carries `checkpoint?: {state, frontierSeq, cutTs}` and only the journal tail after it; tail and replay
+  entries keep their original `ts` and are delivered with `replay: true`. The engine, not the page, records each page's
+  fidelity per instance (`live` / `checkpointed` / `replayed`) from how it fed that page, so a page cannot claim exactness.
+  `ograf-host.js` exposes `serverNow()` (the page's server-time estimate from `TimeSync`) to graphics that ask for it via
+  the `v_noplayout` runtime library (in other OGraf hosts that library falls back to `performance.now()` and receipt time).
 - Results from non-authoritative pages are never committed. A disagreement with the authoritative page (program says step 2,
   a web page says step 1) is counted as `mirror_divergence` in Health.
 
@@ -883,46 +1087,106 @@ compute the same deadlines from the same epoch to time their begin-frames; they 
 - **What is and is not guaranteed.** Software pairing is guaranteed and tested: identical `tc(k)` and identical source paint
   on FILL and KEY. Simultaneous presentation at independent receivers is **not** guaranteed by noPlayout; the receiver or
   switcher pairs by timecode or by arrival. The UI's Separate Fill & Key hint says so.
-- **Progress monitor** (10 Hz): per sender, time since `submit_video` was entered without returning, and `k − last_submit_k`;
-  pacer lateness; ring staleness. `SenderStall` at 250 ms in flight; recreate at 2 s; output-process restart after a second
-  stall within 10 s (K5, §2.13.1). These are separate from the control heartbeat, so a process that answers Pings while a
-  sender is stuck is still caught.
+- **Progress monitor** (10 Hz): per sender, time since `submit` was entered without returning, and `k − last_submit_k`;
+  pacer lateness; ring staleness; the active ring's paint-probe header (K2g, E-057). These are separate from the control
+  heartbeat, so a process that answers Pings while a sender is stuck is still caught.
+- **Slow and stuck senders (E-055; review 2 N4).** Rev 2's "recreate the sender at 2 s" had no executable path: while a
+  sender thread is inside `submit_video` (the SDK's async video send) it owns the grafton-ndi `Sender` and the frame the SDK holds, Rust
+  cannot cancel a thread blocked in a foreign call, and nothing else may touch that `Sender`. Rev 3 separates two cases:
+  - **Slow** (`SenderStall`, in flight 250 ms – 2 s). Nothing is recreated. The thread keeps ownership; the pacer keeps
+    replacing that sender's one-deep queue with the newest snapshot (`submit_blocked++`, `pair_partial++` for the slots it
+    misses); the other plane is untouched. When the call returns, the thread sends the newest snapshot and carries on.
+    Health shows "FILL sender slow (n frames missed)".
+  - **Stuck** (`SenderStuck`, in flight ≥ 2 s). The output process tells the engine and stops reporting itself healthy;
+    the engine **recycles the output process** (kill the process tree, respawn, exactly the K6 path). Process exit is the
+    only termination the OS guarantees for a thread stuck inside the SDK, and it frees the `Sender`, its frames, the SDK's
+    internal state and the NDI source names in one step. The renderers and their rings are untouched, so the new output
+    process resumes from the newest paint.
+  - **Why not a quarantine thread.** Detaching the stuck thread and creating a second `Sender` under the same name inside
+    the same process keeps the stuck thread's frame buffers and SDK state alive for the life of the process, and whether
+    the SDK lets a second sender of the same name start while the first is wedged (or whether the wedge is an SDK-internal
+    lock the second sender would hit too) is not documented. S7b tries it once, as information only; the design does not
+    depend on it.
+  - **Cost (stated, not hidden).** A recycle drops **both** planes, not just the stuck one: receivers lose the NDI source
+    and must rediscover and reconnect, est. 1–3 s at the receiver (measured in S7b), on top of the ≥ 2 s the stuck plane
+    was already missing. The new process starts a new timecode epoch (§5.1, logged). On-air strip: "NDI output restarted:
+    a sender stopped responding". Loop guard: a second `SenderStuck` within 60 s of a recycle backs off (5 s, 15 s, 30 s);
+    after 3 recycles in 5 min the channel goes red and recycling continues every 60 s, because a dead output is worse than
+    one that keeps trying. K5's outage is reported separately from the renderer recovery budget (it is an output failure,
+    not a renderer one).
+  - **Tests.** In M1, `DumpSink` runs through the same per-plane sender threads and queues, and its `fault-inject` can
+    block `submit` for a set time: 300 ms (slow; injection 8) and 3 s (stuck; the output process must be recycled by the
+    engine and the dump resumes with a new epoch). In M2 the same two cases are injected into `NdiSink` by blocking
+    the sender thread before the SDK call (S7b), and the receiver measures the outage and reconnect time.
 
 ### 5.5 Acceptance oracle (receiver side; review 1 F4)
 **The fixture.** `fixtures/frame-oracle` is a coded OGraf graphic. In each `requestAnimationFrame` callback it increments a
-counter `n` and computes `m = round((t − t0) / P)` from the rAF timestamp (`P` from `renderCharacteristics.frameRate`). It draws
-two opaque patches (top-left A, bottom-right B), each encoding `n` and `m` as 24-bit values with a parity bit, in 16 × 16 px
-black/white cells; a third patch encodes `n` **in alpha only** (cells α = 255 or 0), so it appears in the KEY plane and in the
-alpha of Fill+Alpha; plus the 16-step alpha ramp and a moving box. Cells this large survive NDI's compression.
+counter `n` and records `s` = that callback's rAF timestamp in whole microseconds (**source domain**: the page's own frame
+times, not output periods). It draws two opaque patches (top-left A, bottom-right B), each encoding `n` (24 bits) and `s`
+(40 bits, wraps after ≈ 12.7 days) with a parity bit, in 16 × 16 px black/white cells; a third patch encodes `n` **in alpha
+only** (cells α = 255 or 0), so it appears in the KEY plane and in the alpha of Fill+Alpha; plus the 16-step alpha ramp and
+a moving box. Cells this large survive NDI's compression. (Rev 2's `m = round((t − t0)/P)` with `P` the *output* period is
+withdrawn: under a 60 → 59.94 conversion it changes by 2 at every skip and by 0 at a phase step, so an ideal run shows 20
+`Δm ≠ 1` events per 10,000 frames against a bound of 11. Review 2 N2; reproduced by the model below.)
 
 **The decoder** (`noplayout-oracle`) reads **pixels only**: it never reads noPlayout's metadata, counters or logs. It runs in a
 separate receiver process (grafton-ndi `Receiver`) and, in M1, on the output process's paint dumps. Per received frame `j`
-it reports: `Δn` (from A), tear (A ≠ B), key/alpha mismatch (alpha-patch `n` ≠ A's `n`), `Δm`, timecode step (`tc_j −
+it reports: `Δn` (from A), tear (A ≠ B), key/alpha mismatch (alpha-patch `n` ≠ A's `n`), timecode step (`tc_j −
 tc_{j−1}` ≠ one period ±1 tick), FILL/KEY timecode inequality for the same `n`, arrival gaps > 2 periods, unreadable patches
-(parity), and KEY luminance vs the ramp's nominal alpha (±1 LSB for a ≥ 16).
+(parity), KEY luminance vs the ramp's nominal alpha (±1 LSB for a ≥ 16), and two **time-base checks in the source domain**:
+- **Source period** `P̂_src` = the median of `Δs/Δn` over the run (`Δn ≥ 1`). Reported; it must lie within 0.5 % of the
+  nominal source period: the output period in mode A, `1/ceil(fps)` in mode B (1/60 s at 59.94, 1/30 s at 29.97).
+- **Step check.** For every `Δn ≥ 1`: `|Δs − Δn · P̂_src| ≤ P̂_src / 4`. A time base that freezes, jumps or runs at the wrong
+  rate while `n` advances fails here (`step_errors`).
+- **Lag band.** `lag_j = tc_j − s_j` (both in µs, constant offset irrelevant: the page clock and the output clock both run
+  from the machine's monotonic clock). After warm-up, `band = max(lag) − min(lag)` must be ≤ `P̂_src + P̂_src / 4`. A
+  correct selector always shows the newest paint, so the lag moves inside one source period; a selector that sends an old
+  paint, or holds one too long, widens the band (`lag_band_ms`). Mode A: the band must be ≤ `P_out / 4` (4.2 ms at 59.94),
+  because every slot carries the paint of its own begin-frame.
+
+Model check (rev 3, `~/OrgWork/projects/noplayout/design/oracle_model.py`, exact rational arithmetic, 10,000 frames after
+120 warm-up, source phases 0, ¼, ½, ¾ and 0.999 of a period, selector "newest paint with `painted_at ≤ T_k − 1 ms`", 2 ms
+paint latency):
+
+| Case | Skips | Repeats | Step errors | Lag band | Rev 2 `Δm ≠ 1` |
+|---|---|---|---|---|---|
+| Mode A, 59.94 (one paint per slot) | 0 | 0 | 0 | ≈ 0 ms | 0 |
+| Mode B, 59.94 from 60 Hz | 10 | 0 | 0 | 16.67 ms (= `P_src`, bound 20.8) | **20** |
+| Mode B, 29.97 from 30 Hz | 10 | 0 | 0 | 33.33 ms (bound 41.7) | **20** |
+| Mode B, 50 and 25 (rates matched) | 0 | 0 | 0 | 0 ms | 0 |
+| Mutation: time base frozen 10 frames (B 59.94) | 10 | 0 | **19** | **165.8 ms** (fail) | 29 |
+| Mutation: one repeated paint (B 59.94) | 11 | **1** | 0 | **32.3 ms** (fail) | 20 |
+
+Every phase gave the same result. This checks the oracle's arithmetic and thresholds, not CEF. S1a/S1b measure real rAF and
+paint jitter; if a correct run needs more room, the step tolerance and the band's margin over one source period may be
+widened to the measured jitter (recorded in the ADR), never past a band of 1.5 · `P̂_src`, so a held or stale paint still fails.
 
 **Thresholds** (per run; `N` = output frames after a declared 120-frame warm-up):
 
-| Mode / rate | Repeats (Δn = 0) | Skips (Δn ≥ 2) | Backwards (Δn < 0) | Tears | Key/alpha mismatch | Timecode errors | Δm ≠ 1 | Unreadable |
-|---|---|---|---|---|---|---|---|---|
-| A, all eight formats | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| B, 59.94 / 29.97 (declared 1000:1001 conversion) | 0 | ≤ ⌈N/1000⌉ + 1, each exactly Δn = 2, ≥ 900 frames apart | 0 | 0 | 0 | 0 | same as skips | 0 |
-| B, 50 / 25 (rates matched) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Mode / rate | Repeats (Δn = 0) | Skips (Δn ≥ 2) | Backwards (Δn < 0) | Tears | Key/alpha mismatch | Timecode errors | Step errors | Lag band | Unreadable |
+|---|---|---|---|---|---|---|---|---|---|
+| A, all eight formats | 0 | 0 | 0 | 0 | 0 | 0 | 0 | ≤ `P_out`/4 | 0 |
+| B, 59.94 / 29.97 (declared 1000:1001 conversion) | 0 | ≤ ⌈N/1000⌉ + 1, each exactly Δn = 2, ≥ 900 frames apart | 0 | 0 | 0 | 0 | 0 | ≤ 1.25 · `P̂_src` | 0 |
+| B, 50 / 25 (rates matched) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | ≤ 1.25 · `P̂_src` | 0 |
 
 Output-side counters must agree with the oracle (`slots_skipped = 0`, `pair_partial = 0` on reference hardware with healthy
 receivers); a disagreement between them fails the run, because one of the two is wrong.
 
 **Injected faults must fail.** A test build of the output process has a `fault-inject` feature. Each injection must trip
-exactly its intended detector and make the run fail: (1) resend the previous snapshot once (repeat); (2) skip one source
-paint (skip); (3) send a paint three paints old (backwards); (4) send KEY from the previous paint (key mismatch); (5) write
-half a frame from the next paint (tear); (6) bump one `tc` by a period (timecode); (7) freeze the fixture's time base for 10
-frames while `n` still advances (Δm); (8) block one sender for 300 ms (`SenderStall`, `pair_partial`). These run in CI on
-the paint-dump path and locally with NDI.
+exactly its intended detector and make the run fail: (1) resend the previous snapshot once (repeat, lag band); (2) skip one
+source paint (skip); (3) send a paint three paints old (backwards); (4) send KEY from the previous paint (key mismatch); (5)
+write half a frame from the next paint (tear); (6) bump one `tc` by a period (timecode); (7) freeze the fixture's time base
+for 10 frames while `n` still advances (step errors, lag band); (8) block one plane's sender thread in `submit` for 300 ms
+(`SenderStall`, `pair_partial`, the other plane unaffected). All eight run in CI on the paint-dump path from M1, where the
+sinks are `DumpSink`s behind the same per-plane sender threads and queues (§2.4a), so injection 8 exercises the real thread,
+queue and monitor; in M2 they run again with `NdiSink` at a receiver. The stuck case (3 s block → output-process recycle,
+§5.4) is a recovery test, not an oracle row.
 
 **What each mode may claim.** Mode A passing the A row: "no dropped or repeated frames". Mode B at 59.94/29.97 passing its
 row: "output frames continuous; source rendered at 60 Hz and rate-converted, one source frame in 1,000 not shown". Mode B
-is never reported as zero-drop at those rates. IDEA's soak bar ("drop no frames") is read as the **A row**; an OS that only
-passes in mode B does not meet it without Caleb's decision (Q3).
+is never reported as zero-drop at those rates. IDEA's soak bar ("drop no frames") is read as the **A row**. Caleb decided Q3
+(D-015, option b): an OS that only passes in mode B has its 59.94/29.97 formats marked *partial* for the zero-drop soak
+claim (still usable) until CEF #4311 is fixed, decided per OS after S1b.
 
 ### 5.6 Choosing the mode, and when (review 1 F10)
 - **S1a, M1, paint level (provisional).** The real output-process clock and selector (no NDI yet) consume the real ring; the
@@ -968,9 +1232,11 @@ the M6 soak run on other machines (R9).
 | R18 | Unauthenticated LAN control (IDEA default) | someone on the production LAN takes or clears graphics | logged source addresses | Token + scope under Advanced; documented; Caleb may flip the default (E-034). |
 | R19 | Shared Anthropic budget runs out mid-milestone | Fable unavailable for review | `hermes usage` | Per model-routing: build on flash-next/Codex, frontier review queued; never silently downgraded. |
 | R20 | Warm standby costs too much (a second CEF per channel) | S7/M6: standby adds > 60 % CPU or > 400 MB RSS per channel on reference hardware, or makes 4 channels miss the oracle row | Health per process; S7, M6 4-channel run | Lower standby paint rate (1/12), share the preview browser into it (already), then Q1's option of standby per channel. Not silently turned off. |
-| R21 | Poison action hangs both replicas | K3b in conformance or in the field | §2.13.1 detector | Cold restore without the quarantined action; the instance is named on the On-air strip. Cold-path time is not guaranteed ≤ 2 s (Q1). |
+| R21 | Poison action hangs both replicas | K3b in conformance or in the field | §2.13.1 detector | Cold restore without the quarantined action; the instance is named on the On-air strip. Cold-path time is not guaranteed ≤ 2 s (Q1, D-015: best effort). |
 | R22 | iceoryx2 0.10.1 does not fit (API, overflow semantics, dead-publisher cleanup on Windows/macOS) | S8 shows extra copies, blocking writers, or leaked shared memory after `kill -9` | S8 in M1 | Own 4-slot ring over memmap2 + platform shared-memory objects (§3); same protocol (§5.3). |
 | R23 | Standby replicas diverge (non-deterministic graphics) | `ReplicaDiverged` persists after a rebuild | divergence check (§2.13.4) | Instance labelled non-deterministic in Health; recovery for it is "as the standby shows", stated, not hidden. |
+| R24 | A wrong or missing time declaration makes a standby claim **Exact** when it is not, or the shortfall exceeds the flagged `L` (review 2 N1) | any kill → rebuild → second-kill case (§2.13.6) shows an unflagged shortfall, or one above `L` | S7a/S7b, M6 | Undeclared graphics are already worst-case; a wrong sidecar is fixed in the sidecar; an engine bug in fidelity tracking blocks M1. Never shipped as "best effort" |
+| R25 | The paint probe (`invalidate`) does not produce a paint under external begin-frame on some OS, or costs too much on a static scene (E-057) | S7a: a probe unanswered by a healthy static page, or probe repaints visible in the oracle's counters | S7a | Mode A also posts a begin-frame with the probe; second variant `was_resized()` (forces a full-view repaint; also in the cef 156.7.0 `ImplBrowserHost` bindings). If neither works on that OS, K2g there is caught only by the slower detectors (K4's UI-thread latency, K1/K2 exits) and marked **partial** for K2g on that OS in §6.1; the rev 2 "rAF advancing" rule is not brought back |
 
 ### 6.1 Fallback completion status (review 1 F9)
 
@@ -981,12 +1247,12 @@ Caleb's written approval, recorded as a D-nnn). Evidence owner = who produces th
 
 | Risk | Fallback | Status if used | Evidence owner | Evidence |
 |---|---|---|---|---|
-| R1 | mode B at 59.94/29.97 | **partial** for the soak bar (Q3), in scope for output continuity | build card for S1 + Franky review | S1b oracle report per OS |
-| R1 | both modes fail at 50/25 on an OS | **stop** for those formats on that OS; **deferral** only by Caleb (Q4) | same | S1b report |
+| R1 | mode B at 59.94/29.97 | **partial** for the soak bar (Q3, D-015), in scope for output continuity | build card for S1 + Franky review | S1b oracle report per OS |
+| R1 | both modes fail at 50/25 on an OS | **stop** for those formats on that OS; **deferral** only by Caleb (Q4; D-015 keeps all formats required) | same | S1b report |
 | R2 | threads/SIMD | in scope | M2 card | S2 numbers |
 | R2 | accelerated OSR path | **stop** until an ADR + cards exist; deferral only by Caleb | Franky | S2 + M6 4-channel numbers |
 | R3 | "needs a strong GPU" label | in scope if the 2160p runs pass | M6 card | 30-min oracle runs |
-| R3 | drop 2160p from the list | **deferral** only by Caleb (Q4) | Franky | same |
+| R3 | drop 2160p from the list | **deferral** only by Caleb (Q4; D-015 keeps all formats required) | Franky | same |
 | R4 | own libloading NDI wrapper | in scope | build card | loopback + oracle runs |
 | R5 | hold the cef pin | in scope | Renovate PR | S1 + pixel re-run |
 | R6 | custom macOS bundling | in scope | M0/M6 card | notarization dry run |
@@ -994,7 +1260,7 @@ Caleb's written approval, recorded as a D-nnn). Evidence owner = who produces th
 | R8 | WebGL key pass | in scope | M3 card | pixel test |
 | R13 | CEF tests local-only on a lane | **partial** CI coverage, accepted only with a `preflight` evidence file at every milestone commit on that platform | milestone card | `preflight.json` linked in the PR |
 | R14 | lower preview/standby rates | in scope | M6 card | 4-channel oracle run |
-| R20 | standby per channel optional | **deferral** of "≤ 2 s on every channel" only by Caleb (Q1) | Franky | S7 + M6 numbers |
+| R20 | standby per channel optional | **deferral** of "≤ 2 s on every channel" only by Caleb (Q1; D-015 keeps the standby on every channel) | Franky | S7 + M6 numbers |
 | R22 | own shm ring | in scope | M1 card | S8 report |
 
 ### 6.2 Acceptance coverage (platform × format × test)
@@ -1063,17 +1329,24 @@ Tasks:
 4. Renderer: transparent OSR program browser, paint ring writer (§5.3), active/standby roles, mode A begin-frame thread and
    mode B, launch token hand-off. **Spike S8** (iceoryx2 vs own ring, E-042): zero extra copy, writer never blocks, `kill -9`
    of the writer on all three OSes leaves no leaked shared memory after the output process restarts.
-5. Output process without NDI: channel clock (§5.1), ring reader and selector (§5.3), `--dump-paints <dir> --frames N`
-   (raw dumps with `k`, `tc(k)` and the paint chosen), `fault-inject` feature (§5.5).
-6. `noplayout-oracle` + `fixtures/frame-oracle` + `fixtures/recovery-probe`; oracle unit tests on synthetic frames, and the
-   eight injected faults (§5.5) each failing on the dump path.
+5. Output process without NDI: channel clock (§5.1), ring reader and selector (§5.3), the `FrameSink` trait with
+   per-plane sender threads, one-deep queues and the progress monitor (§5.4) driving `DumpSink` (`--dump-paints <dir>
+   --frames N`: raw dumps with `k`, `tc(k)` and the paint chosen), the paint-probe check (K2g, E-057), `fault-inject`
+   feature (§5.5). M2 adds `NdiSink` behind the same threads.
+6. `noplayout-oracle` + `fixtures/frame-oracle` (source-domain time base, §5.5) + `fixtures/recovery-probe`; oracle unit
+   tests on synthetic frames, the model cases of §5.5 as unit tests, and the eight injected faults (§5.5) each failing on
+   the dump path (injection 8 blocks a `DumpSink` sender thread); plus the 3 s stuck-sink case recycling the output process.
 7. **Spike S1a** (paint-level pacing, A vs B, per OS, 59.94 and 50; provisional, §5.6) and **S2** (readback + copy +
    conversion cost at 1080p and 2160p). Provisional mode recorded in STATUS.md and an ADR draft; the ADR is final in M2.
 8. Supervisor: active + warm standby per channel, failure kinds K1–K4 and K6 (§2.13.1), warm promotion, standby rebuild, cold
-   restore. **Spike S7a** (recovery, paint level): the harness injects K1, K2, K3a and K4 with the **Basketball on-air set**
-   (scorebug, ticker cycling, sponsor bug) and the recovery-probe fixture loaded; t1 = the first output slot whose paint
-   decodes (oracle + Basketball reference crops) to the expected state. 20 runs per kind per OS, plus the cold path with the
-   standby disabled. Includes the `addPoints` ×257 and `startClock` cases (§2.13.6).
+   restore, the per-page fidelity record and standby eligibility (§2.13.3a, E-052) with the Basketball sidecar declarations,
+   the loop guard. **Spike S7a** (recovery, paint level): the harness injects K1, K2, K2g, K3a and K4 with the **Basketball
+   on-air set** (scorebug, ticker cycling, sponsor bug) and the recovery-probe fixture loaded; t1 = the first output slot
+   whose paint decodes (oracle + Basketball reference crops) to the expected state. 20 runs per kind per OS, plus the cold
+   path with the standby disabled. Includes the `addPoints` ×257 and `startClock` cases, the kill → rebuild → wait → second
+   kill cases 1–3 and 5, and the static-scene control (§2.13.6). K2g is injected as a GPU-process stall (`SIGSTOP` of the
+   GPU child on Linux/macOS, `NtSuspendProcess` on Windows) and checked to fire with rAF advancing and with rAF stopped;
+   S7a also confirms that `BrowserHost::invalidate` under `external_begin_frame_enabled` yields a paint on each OS (§2.4).
 9. Conformance harness (`tests/conformance`): every EBU example and every Basketball graphic, unmodified, through load → play
    → each step → update → each custom action → stop → dispose in the real CEF renderer; assert return payloads, zero console
    errors, `currentStep` semantics (O6/O7), `stepCount: -1` handling.
@@ -1087,7 +1360,9 @@ offscreen at 1080p59.94 and its saved paint sequence shows correct alpha: backgr
 254, and the alpha-ramp fixture's 16 patches within ±1 LSB of nominal; (c) the S1a, S2 and S8 reports exist with measured
 numbers and the provisional mode; (d) **S7a gate**: on each of Windows 11, macOS arm64 and Linux, the warm path meets its
 fail lines (§2.13.5: K1 ≤ 500 ms, K3a/K4 ≤ 1,000 ms) in 20 of 20 runs, both Basketball recovery tests give the expected
-result, and the cold-path times are recorded. If (d) fails, M2 does not start and Franky reports to Caleb with the numbers.
+result, and the cold-path times are recorded; the kill → rebuild → second-kill cases give their expected exact/flagged
+results with the standby indicator correct before each kill, and the static-scene control shows no false `PaintStall`.
+If (d) fails, M2 does not start and Franky reports to Caleb with the numbers.
 
 ### M2: NDI output: Fill+Alpha and Separate Fill & Key, test pattern, health
 Tasks:
@@ -1095,8 +1370,8 @@ Tasks:
    "Check again".
 2. `noplayout-pixels`: un-premultiply (LUT, threads), shaped/unshaped fill, key, with exhaustive unit tests over all (a, c)
    pairs and a criterion-style bench (`cargo bench -p noplayout-pixels`).
-3. Sender threads, snapshot pairing, backpressure, progress monitor and K5 (§5.4), counters, diagnostic metadata,
-   `connection_count` polling, in the output process.
+3. `NdiSink` behind M1's sender threads, snapshot pairing, backpressure, progress monitor and K5 slow/stuck handling with
+   output-process recycle (§5.4, E-055), counters, diagnostic metadata, `connection_count` polling, in the output process.
 4. Test pattern graphic (§2.10.3) and `POST /api/v1/outputs/test-pattern`.
 5. Monitor taps (program from the output process, preview from the standby) + monitor sockets + `/ws/monitor` + **Spike S3**
    (IPC and JPEG cost at 4 channels × 2 sources).
@@ -1108,7 +1383,9 @@ Tasks:
    a ≥ 16. The eight injected faults run here too.
 8. **Spike S1b** (receiver-level pacing, final; §5.6): per OS, both modes at 59.94 and 50 for 10 minutes, then all eight
    formats for 10 minutes each in the chosen mode. Final ADR.
-9. **Spike S7b** (recovery at an NDI receiver): S7a's matrix plus K5 and K6, with t1 measured at the receiver (§2.13.1).
+9. **Spike S7b** (recovery at an NDI receiver): S7a's matrix plus K5 (slow 300 ms and stuck 3 s, the latter measuring the
+   recycle and the receivers' reconnect time; one informational try of a same-name second sender, §5.4) and K6, with t1
+   measured at the receiver (§2.13.1).
 10. Interop matrix: NDI Studio Monitor (NDI Tools, not redistributed), OBS + DistroAV, vMix if a machine has it.
 
 Done when: with the NDI 6.4 runtime installed on two machines, NDI Studio Monitor and OBS (DistroAV) on the second machine
@@ -1132,14 +1409,16 @@ Tasks:
 3. Port-in-use detection with "next free port" (UI.md §1.5 wording) and the frame-lock note.
 4. Tests: late-join (a second CEF page joins mid-show after play + 2 steps + update + 257 `addPoints`, and after a 2 s settle
    its pixels equal the program page's within tolerance); reconnect (kill the WS, actions continue, the page converges);
+   the **web late-join clock test** and the per-page fidelity flags (§2.13.6, §2.13.3a);
    `/key` vs NDI KEY pixel test (R8); shaped/unshaped `/fill` vs NDI FILL; the §4.3 timestamp tests; the §2.14 authority and
    handoff tests; "Send test pattern" reaches every web role.
 5. `docs/how-to/obs.md` with a curl script that drives the EBU scoreboard through the API.
 
 Done when: an OBS Browser Source (current OBS release) on `/out/main/program` shows the EBU scoreboard with alpha over another
 source, driven only by the documented curl script (load, play, score update, next step, custom action, stop); a browser tab
-opened halfway through shows the same state without replaying animations; every action that tab receives carries `ts`; the
-late-join, key pixel, timestamp and authority tests pass in CI.
+opened halfway through shows the same state without replaying animations (and, for self-timed third-party graphics, carries
+the time-shortfall flag with its bound, §2.13.3a); every action that tab receives carries `ts`; the late-join, web late-join
+clock, key pixel, timestamp and authority tests pass in CI.
 
 ### M4: Playout mode + settings store + Output Setup wizard + OGraf Server API (+ Take IDs)
 Tasks:
@@ -1150,7 +1429,14 @@ Tasks:
    future version refused and never overwritten; first start on a clean profile creates last-good; crash injected after
    the pending write, after the `settings.json` rename and before the last-good write; two concurrent writers (UI autosave
    and `PUT /settings`) with one getting `409`; channel 1 restarts but channel 2's NDI sender name is taken, rolled back; new
-   HTTP port already bound, rolled back with the old listener still serving; read-only directory.
+   HTTP port already bound, rolled back with the old listener still serving; read-only directory. Plus every row of the
+   §2.11 failure table (E-054) by injection: pending write fails; `settings.json` temp write, `fsync` and rename each fail
+   after all resources applied (resources undone, old document served, `503`); directory `fsync` fails after the rename
+   (`200` with warning, new rev); last-good write fails (`200` with warning); pending delete fails, then restart (leftover
+   deleted by hash match, nothing rejected); power-cut simulation that discards the rename (old settings come back, the
+   candidate lands in `rejected/`); an undo fails during rollback (degraded state reported by API and Health, a following
+   `PUT` plans from the running resources). After each: `GET /settings`, the running resources, the files on disk and
+   the next start's loaded document are all asserted.
 2. Shows + rundown model with Take IDs (E-021): uniqueness (inline error on duplicate, D-010), auto-increment assignment,
    renumber, paste remap, undo journal.
 3. Playout engine (§2.7): preload cue, TAKE, NEXT STEP, Take & advance, OUT, CLEAR LAYER/ALL (cut), live update and pending
@@ -1223,7 +1509,8 @@ Tasks:
    field kinds, segments In / Step 1…n / Out, per-element tracks and keyframes, update transitions, custom actions.
 2. Generated `graphic.mjs`: a small embedded runtime (Web Animations API) with no external dependencies; segments map to
    `playAction` steps and `stopAction`; update transitions; custom actions jump to a segment or set a field; the declared
-   recovery checkpoint (`v_noplayout`, §2.13.4) so Designed graphics restore exactly, internal clocks included.
+   recovery checkpoint (`v_noplayout`, §2.13.4) and the **Designed time model** (all time state derived from action `ts`
+   and `serverNow()`, E-056), so Designed graphics restore exactly, internal clocks included; the property test of §2.13.4.
 3. Elements and properties (UI §3.2 Properties rows): Rectangle fill, linear gradient, border, corner radius; Text font, size,
    weight, tracking, alignment, shrink to fit; Image file and fit; Clock count up/down, formats M:SS and SS.t, internal or
    data-driven; all elements X/Y/W/H and opacity; Advanced rotation, blend, mask (on Group), exact anchor, text overflow
@@ -1256,7 +1543,9 @@ timeline points within ±2 LSB for shapes):
 - **M5-F3 images:** a fixed image in each fit mode, and an Image field bound to an image element, changed live.
 - **M5-F4 clock:** four clocks (count up M:SS, count down M:SS, count down SS.t, data-driven M:SS bound to a Number field
   updated by `updateAction`); the internal clocks checked at 0 s, 10 s and 65 s; the count-down clock also checked after a
-  K1 kill and after a forced cold restore (declared checkpoint: exact elapsed time).
+  K1 kill and after a forced cold restore (declared checkpoint: exact elapsed time), after kill → rebuild → wait 60 s →
+  second kill (standby indicator *Exact* throughout, clock exact), and in a web output opened 60 s after start (no flag,
+  exact to the displayed unit).
 - **M5-F5 fields:** one field of each of the seven kinds with defaults, each bound to a property; the exported `schema` is
   checked field by field for the GDD type and default; changing each field through the API changes the right pixels.
 - **M5-F6 animation:** In (two elements with different easing presets), Step 1, Step 2, Out; an update transition on a bound
@@ -1293,11 +1582,13 @@ Done when: every IDEA §9 test passes, each reported with its commit and evidenc
 listed as such, never as passed): the conformance and pixel suites; the receiver-side oracle; the 2-hour soak on both
 reference machines with the **mode A row** of §5.5 (zero repeats, skips, tears, key mismatches, timecode errors and
 `slots_skipped`) and RSS growth under 5 % after the first 10 minutes for every process; the crash test (kill the active
-renderer mid-show) restores output with the same graphics, steps, custom-action effects and running clocks, measured at an NDI
-receiver per §2.13.1, within 2 s in 20 out of 20 runs on each reference machine (target ≤ 500 ms); the K2–K6 runs meet their
-§2.13.5 fail lines; the cold path's measured time is reported against Caleb's answer to Q1; installers are produced by CI for
+renderer mid-show, with an **Exact** standby) restores output with the same graphics, steps, custom-action effects and
+running clocks, measured at an NDI receiver per §2.13.1, within 2 s in 20 out of 20 runs on each reference machine (target
+≤ 500 ms); the kill → rebuild → second-kill cases restore within the same bound with exactly the flagged shortfalls and no
+others; the K2–K6 runs meet their §2.13.5 fail lines; the cold path's measured time is reported as best effort (D-015 Q1);
+installers are produced by CI for
 Windows x64, macOS arm64 and x86_64, and Linux x86_64, and each installs on a clean machine or VM and passes the M4 show
-smoke. A reference machine that meets the soak bar only in mode B does not pass unless Caleb has answered Q3 to accept it.
+smoke. A reference machine that meets the soak bar only in mode B has those formats marked *partial* per D-015 Q3.
 
 ### Spikes (measure before building on them)
 | ID | Question | When | Output |
@@ -1309,10 +1600,10 @@ smoke. A reference machine that meets the soak bar only in mode B does not pass 
 | S4 | Linux CEF OSR under Xvfb, Wayland and `--ozone-platform=headless` | M0–M1 | CI and desktop flags |
 | S5 | macOS renderer helper layout from a dev tree and inside the app bundle | M0, M6 | xtask bundling |
 | S6 | Ctrl+Space and other OS-grabbed keys per OS, as seen by the Tauri webview | M4 | hotkey warning table (R16) |
-| S7a | Recovery at paint level, K1–K4 + cold path, Basketball on-air set, per OS | M1 | per-stage times vs §2.13.5; gate for M2 |
-| S7b | Recovery at an NDI receiver, K1–K6 | M2 | same, end to end |
+| S7a | Recovery at paint level, K1–K4 incl. K2g + cold path, Basketball on-air set, per OS; kill → rebuild → second kill; paint probe (`invalidate` under external begin-frame) and static-scene control | M1 | per-stage times vs §2.13.5, eligibility and flag results, probe answer times; gate for M2 |
+| S7b | Recovery at an NDI receiver, K1–K6, K5 slow and stuck (recycle + receiver reconnect time) | M2 | same, end to end |
 | S8 | iceoryx2 0.10.1 vs own ring for 8 MB paints (copies, blocking, `kill -9` cleanup) per OS | M1 | E-042 final choice (R22) |
-| S9 | Virtual-time replay for third-party graphics' clocks (DevTools `Emulation.setVirtualTimePolicy`) | M4 (optional) | adopt only if real time resumes cleanly; otherwise the §2.13.4 limitation stands |
+| S9 | Virtual-time replay for third-party graphics' clocks (DevTools `Emulation.setVirtualTimePolicy`) | M4 (optional) | adopt only if real time resumes cleanly; otherwise the §2.13.3a limitation stands as approved (D-015 Q2); if adopted, `replayed-timed` copies count as exact |
 
 Order inside M1 (breaks rev 1's S1 ↔ M2 loop, F10): renderer ring writer → output clock + selector (no NDI) → oracle →
 S1a/S7a. Nothing in M1 depends on an M2 task, and nothing in M1 is called receiver-proven.
@@ -1411,6 +1702,12 @@ smoke-tested under Rosetta, labelled "community-tested" in the README.
   promotion; journal-length warning ("restoring this graphic after a crash would take about N s"); per-page lag for web
   outputs in Health; settings apply failures that name the failed step (§2.11). The strings in this plan are placeholders.
   (7) Settings writes can now return "changed elsewhere, reload" (`409`).
+- **Usopp (rev 3 additions, same addendum):** (8) the standby indicator's three states (*exact* / *ready, not exact for
+  ⟨graphic⟩ up to ⟨L⟩* / *rebuilding, not ready*) and its remedy hint ("re-take ⟨graphic⟩ in a break"), §2.13.3a; (9) the
+  per-instance time-shortfall flag with its bound `L`, on the On-air strip after a promotion or cold restore, and on a web
+  output's row in Outputs for a late-joined page; (10) "Settings not fully applied" (degraded) and the two post-commit
+  warnings, §2.11; (11) "NDI output restarted: a sender stopped responding", §5.4; (12) "Renderer can't draw" after the
+  loop guard, §2.13.1. Engineering adds no screen for any of these; the placement is his.
 - **Robin:** no new research needed for M0–M4.5. Before the first public release: re-diff the NDI 6.4 EULA against 6.3.2 (her
   noted gap). Before the private switch: GitHub Actions artifact-storage quota and price for a private repo on the Free plan
   (§8.2).
@@ -1421,59 +1718,72 @@ smoke-tested under Rosetta, labelled "community-tested" in the README.
 
 ## Open questions for Caleb
 
-D-012…D-014 closed rev 1's two questions (Basketball package, OES data). Review 1 exposed places where IDEA's wording can't be
-guaranteed for every case. I have not relaxed any of them; the plan keeps IDEA's bar and asks you here. Numbers marked *est.*
-are my estimates until the M1/M2 spikes measure them.
+**Q1–Q5 are decided (D-015, 2026-11-26, "as recommended").** They stay here, rewritten to their real scope after review 2,
+so the record shows what was approved and with which numbers. Only **Q6** is open. Numbers marked *est.* are estimates
+until the M1/M2 spikes measure them.
 
-**Q1. Does "back within 2 s" have to hold even after a double failure?**
-- *What's met:* any single renderer failure (crash, hang, killed process, GPU process crash) is covered by a warm spare
-  renderer per channel that has run the same show live. Output never goes black (the last frame holds) and the right picture
-  is back in *est.* 0.15 s for a crash and *est.* 0.65 s for a hang. That covers IDEA's crash test with a wide margin.
-- *What isn't guaranteed:* when the spare is also gone (a second failure within the few seconds it takes to rebuild it, a
-  graphic bug that freezes both copies, an engine restart), the channel rebuilds from scratch: *est.* 0.6–2.5 s with the
-  Basketball show, depending on the machine. The picture still holds the last frame during that time.
-- *Cost of the spare:* one more browser per channel, *est.* 150–400 MB RAM and 15–30 % more CPU per channel.
-- *Options:* (a) 2 s is guaranteed for single failures and a measured best-effort target for double failures;
-  (b) 2 s for everything, which needs a third pre-started browser per channel (more RAM, and it still can't beat the
-  freeze-both-copies case); (c) drop the spare to save resources and accept about 1–3 s recoveries that also lose a
-  graphic's own running clock.
-- **Recommend (a).**
+**Q1. Recovery time. Decided: (a).**
+- *Guaranteed:* a single failure of the active renderer (crash, hang, killed process, GPU stall) while the standby is
+  **Exact** (§2.13.3a) brings the same picture back, running clocks included, in *est.* 0.15 s for a crash and *est.* 0.65 s
+  for a hang; fail lines 0.5 s and 1 s, IDEA's limit 2 s. Output never goes black (the last frame holds). The standby is
+  Exact for the first failure of a session, and again after any rebuild once every graphic on air is data-fed, declared
+  time-free, checkpointed, or was taken after the rebuild.
+- *Best effort, measured:* when no standby is promotable (a second failure inside the *est.* 0.6–2.5 s rebuild window, a
+  graphic bug that freezes both copies, an engine restart), the channel rebuilds from scratch in *est.* 0.6–2.5 s with the
+  Basketball show; the last frame holds meanwhile.
+- *Cost of the spare:* one more browser per channel, *est.* 150–400 MB RAM and 15–30 % more CPU per channel (R20).
+- *Not chosen:* (b) a third pre-started browser to cover double failures (more RAM; still can't cover a freeze-both-copies
+  bug); (c) no spare (≈ 1–3 s recoveries that also lose self-run clocks on the first failure).
 
-**Q2. A third-party graphic's own running clock after a from-scratch rebuild.**
-- OGraf gives a host no way to read or set a graphic's internal timer. After a from-scratch rebuild (the Q1 double-failure
-  case only), a clock the graphic runs itself (Basketball `startClock`) restarts from where its data says, not from the
-  time that actually passed. Clocks fed from data (OES → `gameClock`) and every graphic built in noPlayout's editor come back
-  exactly.
-- *Options:* (a) accept, show a clear flag on the On-air strip, and try the virtual-time spike S9; (b) require graphics
-  used for live clocks to be data-driven or to support noPlayout's declared checkpoint.
-- **Recommend (a).** For your own Basketball package, feeding the clock from the OES source avoids it entirely.
+**Q2. A third-party graphic's own running clock. Decided: (a) accept, flag, try S9.** Real scope, per review 2 N1:
+- OGraf gives a host no way to read or set a graphic's internal timer. noPlayout restores it only in a copy that ran the
+  graphic live. So a third-party clock the graphic runs itself (Basketball `startClock`, or `clockRunning: true` in its
+  data) is exact on the **first** failover only. This is **not** limited to a short double-failure window: after that
+  failover the replacement standby is rebuilt by replay, and from then on the next failure brings the clock back short by
+  the clock's age at rebuild time (its *replay age*). The same happens in a web output opened, or reconnecting, mid-show.
+- *Numbers:* a self-running game clock started at the tip, first renderer failure at 8:00 → exact; replacement rebuilt at
+  ≈ 8:02; any second failure later in that half → the clock on air shows ≈ 8 min 2 s too much time remaining. A web output
+  opened 15 min into the half shows its scorebug clock 15 min off for as long as that graphic stays on. Scores, steps and
+  data are exact on every path; only time the graphic keeps by itself is affected.
+- *What the operator sees:* before any failure, the standby indicator turns amber ("not exact for Scorebug clock, up to
+  8 min 2 s") and suggests re-taking the graphic in a break, which makes the standby exact again; after a failure, the
+  On-air strip flags the instance with the bound. Nothing is lost silently.
+- *Always exact:* clocks fed from data (OES → `gameClock`, `clockRunning: false`) and every graphic built in noPlayout's
+  editor (declared checkpoints and a time model based on server timestamps, §2.13.4). That is the recommended way to run
+  live clocks; for the Basketball package, feeding the clock from OES avoids the issue entirely.
+- *Not chosen:* (b) require live-clock graphics to be data-driven or checkpointed (would refuse otherwise valid OGraf
+  graphics). S9 may later remove most of the limitation; nothing depends on it.
 
-**Q3. If an OS can only pace in free-run mode, does that pass the "drop no frames" soak?**
-- In free-run mode at 59.94 the browser draws at 60 Hz and noPlayout outputs a perfect 59.94 stream, so one drawn frame in
-  every 1,000 is never shown, about once every 16.7 s. Every output frame is present with correct timecode; a scrolling
-  ticker moves one frame's worth further at that moment. At 50 and 25 the rates match and nothing is skipped.
-- *Options:* (a) accept it on that OS, labelled in STATUS.md and the release notes; (b) mark that OS's 59.94/29.97 formats
-  *partial* until CEF adds timed begin-frames (CEF issue #4311, open).
-- **Recommend:** decide when S1b shows which OSes need it (M2). My default is (b) for the soak claim with the formats still
-  usable, because IDEA says "no frames".
+**Q3. Free-run-only OS and the "drop no frames" soak. Decided: (b).** In free-run mode at 59.94 the browser draws at 60 Hz
+and one drawn frame in every 1,000 is never shown (about once every 16.7 s); every output frame is present with correct
+timecode. An OS that only passes in free-run mode has its 59.94/29.97 formats marked *partial* for the zero-drop soak claim
+(still usable) until CEF #4311 is fixed, decided per OS after S1b (M2).
 
-**Q4. 50 Hz and UHD on every OS.**
-- IDEA requires all eight formats, and 2160p needs about 1 GB/s of copy and conversion per channel at 29.97. If a supported
-  OS or the reference hardware can't do a format cleanly, rev 1 would have quietly labelled it experimental or removed it.
-  Rev 2 makes that a stop: the milestone stays open.
-- *Options:* (a) keep every format required, and build the GPU-shared-texture path in v1 if needed (more work, ADR first);
-  (b) let a specific format/OS pair ship as "not supported on this machine" with your approval, per pair.
-- **Recommend (a)** until S2 (M1) and the M6 runs give real numbers; I'll come back with them before any deferral.
+**Q4. 50 Hz and UHD on every OS. Decided: (a).** All eight formats stay required; the GPU shared-texture path is built in
+v1 if S2 or the M6 runs show it is needed (ADR first). Franky returns with numbers before proposing any deferral.
 
-**Q5. Private CI, when the repo goes private.** The plan in §8.2 costs about $30/month gross on hosted runners (PRs on
-Linux/Windows, all four lanes on merges, Linux nightly), up to about $56 with twice the activity, with a native-Mac
-`preflight` file replacing macOS checks on PRs. **Recommend:** approve that schedule and a $60/month Actions spending limit at
-the switch; the Mac Studio runner stays optional.
+**Q5. Private CI. Decided.** The §8.2 reduced schedule (≈ $30/month expected, up to ≈ $56 at twice the activity; Intel
+macOS checks after merge; native arm64 `preflight` on PRs) and a $60/month Actions spending limit set at the private switch.
 
-**Q6. Reference hardware for timing tests.** IDEA names an M-series Mac mini and a mid-range Windows PC with a discrete GPU
-for the soak. Timing and recovery tests also need a named Linux box, and native Intel-Mac timing needs a real Intel Mac (the
-CI runner is a VM). **Recommend:** name the Linux box now (any desktop with a discrete GPU), and accept CI-runner-only coverage
-for Intel Macs (functional, not timing) given the 2027 sunset.
+**Q6. Reference hardware for timing tests. Open.** IDEA names an M-series Mac mini and a mid-range Windows PC with a discrete
+GPU for the soak. Timing and recovery tests also need a named Linux box, and native Intel-Mac timing needs a real Intel Mac
+(the CI runner is a VM). **Recommend:** name the Linux box now (any desktop with a discrete GPU), and accept CI-runner-only
+coverage for Intel Macs (functional, not timing) given the 2027 sunset. Needed before M1's S7a/S1a runs on Linux.
+
+## Review 2 disposition
+
+Cold review 2 (`~/OrgWork/projects/noplayout/reviews/plan-review-2.md`, verdict REWORK, converging) is accepted in full;
+nothing is rebutted. F3, F6, F8, F9, F10 and F11 were resolved there; the partly-resolved findings are closed through N1–N6.
+
+| Finding | Change | Section |
+|---|---|---|
+| N1 [blocking] standby "alive/Synced" is not same-state after a rebuild; Q1/Q2 understated the scope | Per-page, per-instance **fidelity** (`live` / `checkpointed` / `replayed`) recorded by the engine; **time exposure** from manifest or sidecar declarations, worst case for undeclared graphics; shortfall bound `L = t_rebuild − t_expose`, fixed at rebuild, growing with replay age; three **standby eligibility** states (Exact / Ready, inexact / Not ready) shown before any failure; exactly when the same-state guarantee holds, how exactness comes back (re-take, checkpoint) and what happens when it can't (promote anyway, flag with `L`); web late join/reconnect under the same rules; divergence never used as proof of equality. Tests: kill → rebuild → wait → second kill (five cases), web late-join clock test, sidecar on/off. Q1/Q2 rewritten with the real scope and numbers, as decided by Caleb (D-015) | §1, §2.1, §2.13.1, §2.13.3, §2.13.3a, §2.13.5, §2.13.6, §4.3, §7 M1/M3/M5/M6, §9, Q1, Q2, E-041, E-045, E-052 |
+| N2 [should] mode-B oracle time base in the wrong domain | `m` withdrawn; fixture draws its rAF timestamp `s` (source domain); decoder checks the source period, a per-step check and a lag band; thresholds table updated. Exact-arithmetic model: ideal 60 → 59.94 gives 10 skips, 0 step errors, band 16.67 ms (bound 20.8), where rev 2's rule gave 20 failures; frozen-time-base and repeated-paint mutations fail | §5.5, §7 M1, E-048, E-053; `~/OrgWork/projects/noplayout/design/oracle_model.py` |
+| N3 [should] persistence failure after resources were applied | Commit point = the `settings.json` rename; pending carries the candidate's hash; old resources held until commit; a failure table with outcome, running resources, API view, files and next-start result for every step incl. post-commit warnings and a failed rollback (**degraded** state); startup tells a committed leftover from an interrupted apply by hash; M4 injects every row | §2.9.2, §2.11, §7 M4, E-050, E-054 |
+| N4 [should] stuck SDK sender has no executable ownership/termination path | Slow (≤ 2 s) vs stuck (≥ 2 s); a stuck submit **recycles the output process** (the K6 path), the only termination the OS guarantees, with its cost stated (both planes drop; *est.* 1–3 s receiver reconnect on top of the ≥ 2 s; new timecode epoch) and a loop guard; quarantine thread considered and rejected (S7b tries it once, informational) | §2.4a, §2.13.1 K5, §5.4, §7 M1/M2, E-049, E-055 |
+| N5 [should] checkpoint cut and tail not defined | Quiescent per-instance cut with `frontierSeq` and `cutTs`, synchronous state capture, never delays an on-air action; restore = load → restore → tail with original `ts`; the **Designed time model** (time state derived from `ts` and `serverNow()`) makes the tail time-faithful by construction; property test and second-kill test in M5 | §2.5, §2.13.4, §4.3, §7 M5, E-045, E-056 |
+| N6 [should] PaintStall can't tell a static scene from a GPU stall | Forced-repaint **paint probe** (`BrowserHost::invalidate` after 100 ms without a paint, answered within 250 ms by any healthy scene), judged by the output process; rAF demoted to diagnostics; loop guard for repeat stalls; static-scene control test and stall injection with rAF advancing and stopped; S7a checks `invalidate` under external begin-frame per OS | §2.4, §2.5, §2.13.1 K2g, §2.13.6, §7 M1, E-043, E-057 |
+| M1 note: injection 8 needs a sender before M2 | M1 builds the `FrameSink` trait, per-plane sender threads, queues and progress monitor with `DumpSink`; injection 8 blocks a `DumpSink` thread; `NdiSink` joins the same threads in M2, where the injections run again at a receiver | §2.4a, §5.5, §7 M1/M2 |
 
 ## Review 1 disposition
 
@@ -1498,6 +1808,25 @@ All eleven findings are accepted; none is rebutted. "Section" is where the chang
 | API audit notes (`FrameRate::new`/`connection_count` return `Result`; no borrowed builder into owned submit; backpressure) | Written into the NDI section | §2.10.1 |
 
 ## Process note
+- Tier: rev 3 written by Franky on the frontier model (card t_184845fe), no subagents. Inputs: cold review 2
+  (`~/OrgWork/projects/noplayout/reviews/plan-review-2.md`, Codex gpt-6.1-sol), Caleb's D-015 (relayed by Rayleigh on the
+  card, mid-run, and merged from `main` at 4e4e538 before this commit), rev 2 (c90763d).
+- Caleb's answer arrived before this revision was finished and is binding: Q1–Q5 as recommended, Q2 explicitly including
+  N1's scope. Rev 3 therefore states the limitation as an owner-approved one, with numbers, instead of asking.
+- Verified myself for rev 3 on 2026-11-26: the Basketball package sources (only `bball-scorebug` and `bball-ticker` call
+  `setTimer`/`setRepeat`; the scorebug's clock runs from `performance.now()` deltas and starts via `startClock` or
+  `clockRunning: true`; the ticker flips on a `dwellSeconds` timer); `ImplBrowserHost::{invalidate, was_resized}` present in
+  the cef 156.7.0 bindings for every target we build (x86_64/aarch64 macOS, x86_64 Windows, x86_64 Linux); grafton-ndi
+  3.0.0 `Sender::submit_video` exists as named; the review's N2 arithmetic, reproduced with an exact-rational model
+  (`~/OrgWork/projects/noplayout/design/oracle_model.py`, output `oracle_out.txt` alongside) that also checks the
+  replacement thresholds and two mutations.
+- Not verified, stated as such: whether `invalidate` yields a paint under `external_begin_frame_enabled` (S7a), receiver
+  reconnect time after an output recycle (S7b), and the NDI SDK's behaviour with a second same-name sender while one is
+  wedged (informational in S7b). Every *est.* number is still an estimate.
+- Not done: no code; no build cards (Rayleigh creates them after Caleb approves); nothing pushed. A third cold review,
+  scoped to review 2's findings, is the next gate.
+
+Rev 2 process note (t_63bf63cf), kept for the record:
 - Tier: rev 2 written by Franky on the frontier model (card t_63bf63cf), no subagents. Inputs: cold review 1
   (`~/OrgWork/projects/noplayout/reviews/plan-review-1.md`, Codex gpt-6.1-sol), `docs/01-decisions.md` D-001…D-014 (merged
   from `main` at 96a24c2), IDEA.md, UI.md rev 3, Robin's foundations report and addendum.
