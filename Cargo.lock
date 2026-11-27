@@ -2725,6 +2725,10 @@ version = "0.0.1"
 [[package]]
 name = "noplayout-frames"
 version = "0.0.1"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "noplayout-ndi"

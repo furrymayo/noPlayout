@@ -20,7 +20,14 @@ library import API, not a new upload endpoint or UI; M1 task 3 can call it from 
   traversal and staging rejection. Import tests validate all nine upstream examples and six
   Basketball graphics. These are import/serving checks, not CEF runtime conformance evidence.
 
-Still pending: M1 tasks 4–10 (paint ring, output clock, oracle,
+Task 4, part 1 (`noplayout-frames`, spike S8): own 4-slot paint ring over `shm_open`/`mmap`
+and pagefile-backed `CreateFileMappingW`, the §5.3 protocol with generation-stamped slot
+states, a never-blocking writer, a reader that ignores a dead writer's WRITING slot and resets
+READING on respawn, and a name registry the engine sweeps (POSIX objects outlive `kill -9`).
+S8 report: `docs/spikes/S8-paint-ring.md` (provisional Mac Studio numbers; iceoryx2 was not
+exercised, flagged there for the frontier review).
+
+Still pending: M1 tasks 4 (renderer OSR/ring writer/drive modes) –10 (output clock, oracle,
 spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
@@ -112,7 +119,7 @@ Linux needs the Tauri v2 packages listed in README.md; Windows needs the MSVC bu
 
 ## Skeleton crates
 
-`noplayout-frames` (M1, spike S8), `noplayout-pixels` (M1/M2), `noplayout-oracle` (M1),
+`noplayout-pixels` (M1/M2), `noplayout-oracle` (M1),
 `noplayout-ndi` (M2), `noplayout-datasource` + `noplayout-capture` (M4.5),
 `noplayout-decoder-oes` (M4.5; must pass `fixtures/oes/` byte for byte).
 
