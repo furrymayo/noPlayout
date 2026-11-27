@@ -3,6 +3,38 @@
 **Milestone:** M0, workspace skeleton (PLAN.md §7). Plan approved 2026-11-26 (D-016); macOS arm64
 first (D-017).
 
+## M1 progress (not complete)
+
+Task 1 implements the engine library API in `noplayout_core::library::Library`:
+`open`, `import_folder`, `import_zip`, and `read_asset`. The engine opens its data directory's
+`library/` storage and serves validated snapshots at `/library/<full-sha256>/<asset-path>`.
+`PackageVersion::manifest_url()` and `main_url()` return package-relative URLs. This is a Rust
+library import API, not a new upload endpoint or UI; M1 task 3 can call it from the dev CLI.
+
+- Vendored EBU schemas, nine examples and Server API YAML at
+  `945f8bbcbcba262377544871dd4af62e54de5177`, with original licence and provenance.
+- Offline schema validation, real-time requirement, contained main module and local schema
+  references; immutable staged folder/ZIP imports. One graphic per import; import individual
+  folders from multi-graphic collections. ADR 0060 documents path policy, limits and hashing.
+- Real HTTP tests cover manifests, module dependencies, asset MIME types, HEAD, missing files,
+  traversal and staging rejection. Import tests validate all nine upstream examples and six
+  Basketball graphics. These are import/serving checks, not CEF runtime conformance evidence.
+
+Still pending: M1 tasks 2–10 (host runtime, host protocol/CLI, paint ring, output clock, oracle,
+spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
+functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
+binding timing or memory measurements on the reference M2 mini are claimed here.
+
+Task-1 commit is currently blocked by the licence gate: the pinned `jsonschema` dependency
+introduces `borrow-or-share` (MIT-0), which is not yet in the reviewed `deny.toml` allowlist.
+No licence-policy change is included in this slice. The upstream examples also retain their
+bundled dependency notices (including GSAP's standard-licence header); EBU's MIT notice does
+not override those notices. Parent licence review is required before publishing the snapshot.
+
+Deliberate task-1 boundaries: engine-owned storage must not be edited externally; no global
+concurrent-request memory cap, package GC, crash-left staging cleanup or power-loss durability
+claim. No import UI or upload API in this slice. See ADR 0060 for the filesystem threat boundary.
+
 ## M0 "Done when"
 
 | Item | State |

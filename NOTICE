@@ -23,6 +23,10 @@ Chromium Embedded Framework and Chromium
 OGraf
   noPlayout hosts graphics that follow the EBU OGraf specification (https://ograf.ebu.io/).
   OGraf is developed by the European Broadcasting Union (EBU); "OGraf" names that specification.
+  third_party/ograf/: schemas and examples from ebu/ograf commit
+  945f8bbcbcba262377544871dd4af62e54de5177, MIT, Copyright (c) 2026 European Broadcasting
+  Union (EBU). See third_party/ograf/LICENSE and README.md; bundled example dependency notices
+  remain with their original sources.
 
 Test fixtures
   fixtures/basketball-ograf-package/: Basketball OGraf Package, authored by Caleb (GitHub:

@@ -65,3 +65,4 @@ ADRs 0001–0059 were backfilled in M0 from `DECISIONS.md` E-001…E-059 at 561e
 | [0057](0057-paintstall-detected-by-a-forced-repaint-probe.md) | PaintStall detected by a forced-repaint probe, not by rAF | accepted | 2026-11-26 |
 | [0058](0058-time-declarations-list-every-timer.md) | Time declarations list every timer with its entry points; exposure and flags per timer; CI declaration audit | accepted | 2026-11-26 |
 | [0059](0059-load-frontier-for-checkpoint-declaring-graphics.md) | Load frontier: exact timestamped full replay before the first checkpoint and as the last fallback (`replayed-timed`) | accepted | 2026-11-26 |
+| [0060](0060-immutable-ograf-package-library.md) | Immutable OGraf package snapshots and offline import boundaries | proposed | 2026-11-27 |

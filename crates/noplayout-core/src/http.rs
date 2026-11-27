@@ -1,5 +1,5 @@
-//! The engine's HTTP server. M0 serves only `GET /api/v1/health` and the loopback-only
-//! `POST /api/v1/internal/shutdown` (E-034: internal routes need the per-launch token).
+//! The engine's HTTP server: health, immutable validated library assets (M1), and the
+//! loopback-only internal shutdown route (E-034: internal routes need the per-launch token).
 
 use crate::TOKEN_HEADER;
 use crate::health::{Health, HealthState};
@@ -15,6 +15,8 @@ use tokio::sync::Notify;
 #[derive(Debug)]
 pub struct ApiState {
     pub health: HealthState,
+    /// Validated package snapshots; `None` is used by health-only test servers.
+    pub library: Option<crate::library::Library>,
     /// Token a supervising app must present to the internal routes; `None` disables them.
     pub ui_token: Option<String>,
     /// Notified when an authorised shutdown request arrives.
@@ -24,8 +26,65 @@ pub struct ApiState {
 pub fn router(state: Arc<ApiState>) -> Router {
     Router::new()
         .route("/api/v1/health", get(health))
+        .route("/library/{hash}/{*asset}", get(library_asset))
         .route("/api/v1/internal/shutdown", post(shutdown))
         .with_state(state)
+}
+
+async fn library_asset(
+    State(state): State<Arc<ApiState>>,
+    axum::extract::Path((hash, asset)): axum::extract::Path<(String, String)>,
+) -> Result<axum::response::Response, StatusCode> {
+    use axum::response::IntoResponse;
+    let library = state.library.clone().ok_or(StatusCode::NOT_FOUND)?;
+    let mime = asset_mime(&asset);
+    // Disk I/O must not block the async engine's control handlers.
+    let bytes = tokio::task::spawn_blocking(move || library.read_asset(&hash, &asset))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((
+        [
+            ("content-type", mime),
+            ("cache-control", "public, max-age=31536000, immutable"),
+            ("x-content-type-options", "nosniff"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+fn asset_mime(path: &str) -> &'static str {
+    match std::path::Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "mjs" | "js" => "text/javascript",
+        "json" | "map" => "application/json",
+        "css" => "text/css",
+        "html" | "htm" => "text/html",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "wasm" => "application/wasm",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "txt" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
 }
 
 async fn health(State(state): State<Arc<ApiState>>) -> Json<Health> {
@@ -98,6 +157,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let state = Arc::new(ApiState {
             health: HealthState::new(),
+            library: None,
             ui_token: ui_token.map(str::to_owned),
             shutdown: Arc::new(Notify::new()),
         });

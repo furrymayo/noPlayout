@@ -144,6 +144,9 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     let health = HealthState::new();
     let stop = Arc::new(Notify::new());
     let state = Arc::new(ApiState {
+        library: Some(noplayout_core::library::Library::open(
+            data.join("library"),
+        )?),
         health: health.clone(),
         ui_token: std::env::var(ENV_UI_TOKEN).ok().filter(|t| !t.is_empty()),
         shutdown: stop.clone(),

@@ -4,3 +4,6 @@
 # Fixtures are byte-identical copies of supplied material or generated vectors: no line-ending
 # conversion, no diffs as text merges (D-014, D-013). Later lines win, so this overrides the above.
 fixtures/** -text
+
+# Pinned upstream schemas/examples must retain their exact source bytes.
+third_party/ograf/** -text

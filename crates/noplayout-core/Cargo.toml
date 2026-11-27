@@ -18,6 +18,9 @@ anyhow.workspace = true
 axum.workspace = true
 directories.workspace = true
 interprocess = { workspace = true, features = ["tokio"] }
+jsonschema.workspace = true
+sha2.workspace = true
+zip.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

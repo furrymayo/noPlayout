@@ -10,6 +10,7 @@ pub mod client;
 pub mod health;
 pub mod http;
 pub mod instance;
+pub mod library;
 pub mod logging;
 pub mod paths;
 pub mod selftest;
