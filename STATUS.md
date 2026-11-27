@@ -20,16 +20,23 @@ library import API, not a new upload endpoint or UI; M1 task 3 can call it from 
   traversal and staging rejection. Import tests validate all nine upstream examples and six
   Basketball graphics. These are import/serving checks, not CEF runtime conformance evidence.
 
-Still pending: M1 tasks 2–10 (host runtime, host protocol/CLI, paint ring, output clock, oracle,
+Still pending: M1 tasks 3–10 (host protocol/CLI, paint ring, output clock, oracle,
 spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
 
-Task-1 commit is currently blocked by the licence gate: the pinned `jsonschema` dependency
-introduces `borrow-or-share` (MIT-0), which is not yet in the reviewed `deny.toml` allowlist.
-No licence-policy change is included in this slice. The upstream examples also retain their
-bundled dependency notices (including GSAP's standard-licence header); EBU's MIT notice does
-not override those notices. Parent licence review is required before publishing the snapshot.
+Licence gate: the pinned `jsonschema` dependency brings `borrow-or-share` (MIT-0); `deny.toml`
+allows MIT-0 (permissive, no attribution clause). The upstream examples keep their bundled
+dependency notices (including GSAP's standard-licence header); EBU's MIT notice does not
+override those notices.
+
+Task 2 (`web/host`): `HostRuntime` per §2.5/§4.3: load gating (O5), ordered non-awaited starts
+(O8), 10 s/5 s timeouts, generation-isolated results with `seq`, `currentStep`/`stepCount: -1`
+semantics, cue slots, 100 ms `Beat{n, rafCount, lagMs, lastAppliedSeq}`, `TimeSync` clock
+estimate, snapshot/journal replay with original `ts`, quiescent `v_noplayout` checkpoints.
+Built to `dist/host/{renderer.html,ograf-host.js}`; vitest runs it against misbehaving fake
+graphics (never-resolving load, throws, out-of-order resolution). Not yet in it: the test-build
+frame-oracle overlay (task 6, `TODO(M1)`), fill/key presentation (M3).
 
 Deliberate task-1 boundaries: engine-owned storage must not be edited externally; no global
 concurrent-request memory cap, package GC, crash-left staging cleanup or power-loss durability
