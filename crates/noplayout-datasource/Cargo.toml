@@ -1,0 +1,18 @@
+[package]
+name = "noplayout-datasource"
+description = "Data-source transports (serial, TCP, UDP), framework and capture/replay format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "noplayout-capture"
+path = "src/bin/noplayout-capture.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "noplayout-app"
+description = "noPlayout desktop app: the Tauri v2 shell that starts or attaches to the engine (D-001)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+noplayout-core.workspace = true
+serde.workspace = true
+tauri = { workspace = true, features = ["custom-protocol"] }
+
+[lints]
+workspace = true

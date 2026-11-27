@@ -1,0 +1,61 @@
+# cargo-deny gate (E-032): licence allowlist, banned sources, advisories.
+# Run: cargo deny check   (CI runs it on every push; advisories again nightly).
+#
+# Additions to E-032's base list must be reviewed and noted here with the crate that needs them.
+
+[graph]
+# Every lane we ship on, so platform-only dependencies are checked too.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+all-features = false
+
+[advisories]
+# RustSec database. Unmaintained crates warn only for direct dependencies.
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    # E-032 base list
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "Zlib",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "MPL-2.0",
+    "IJG",
+    # Added after M0's first run (E-032 "whatever M0's first run shows is needed and reviewed").
+    # All permissive, none copyleft:
+    "Apache-2.0 WITH LLVM-exception", # target-lexicon (via cfg-expr/system-deps, build-time)
+    "bzip2-1.0.6",                    # libbz2-rs-sys (download-cef, build-time CEF fetch)
+    "CDLA-Permissive-2.0",            # webpki-roots CA data (ureq in download-cef, build-time)
+]
+# IJG is allowed ahead of jpeg-encoder (M2); don't warn that it isn't used yet.
+unused-allowed-license = "allow"
+
+[licenses.private]
+# Our own crates are `publish = false` and Apache-2.0 via the workspace.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Copyleft is denied by the allowlist above. E-032 also keeps MPL-2.0 out of the renderer; that
+# is checked by the `renderer_has_no_copyleft` step in CI (`cargo deny --exclude ...` cannot
+# scope a licence to one crate).
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,21 @@
+[package]
+name = "noplayout-renderer"
+description = "CEF offscreen renderer host; writes paints to shared memory, never sends NDI (D-001, E-040)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# macOS dev bundle (cargo xtask bundle): CEF's helper apps run this same executable (PLAN §2.1).
+[package.metadata.cef.bundle]
+helper_name = "noplayout-renderer"
+
+[dependencies]
+noplayout-proto.workspace = true
+interprocess.workspace = true
+cef.workspace = true
+
+[lints]
+workspace = true

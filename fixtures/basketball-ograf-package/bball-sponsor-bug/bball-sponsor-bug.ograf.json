@@ -1,0 +1,122 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-sponsor-bug",
+  "version": "1.0.0",
+  "name": "Basketball – Sponsor Bug",
+  "description": "Top-right \"presented by\" corner bug with a sponsor logo or name.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 1,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "label": "Label",
+        "gddType": "single-line",
+        "default": "PRESENTED BY",
+        "order": 1
+      },
+      "sponsorName": {
+        "type": "string",
+        "label": "Sponsor name",
+        "gddType": "single-line",
+        "default": "YOUR SPONSOR",
+        "order": 2,
+        "description": "Shown when no logo is set."
+      },
+      "logo": {
+        "type": "string",
+        "label": "Sponsor logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "",
+        "order": 3,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "panel": {
+        "type": "string",
+        "label": "Panel style",
+        "gddType": "select",
+        "enum": [
+          "light",
+          "dark"
+        ],
+        "gddOptions": {
+          "labels": {
+            "light": "Light",
+            "dark": "Dark"
+          }
+        },
+        "default": "light",
+        "order": 4,
+        "hidden": true
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 5,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 800
+    },
+    {
+      "type": "stopAction",
+      "duration": 500
+    },
+    {
+      "type": "updateAction",
+      "duration": 0
+    }
+  ]
+}

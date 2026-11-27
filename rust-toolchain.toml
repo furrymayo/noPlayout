@@ -1,0 +1,5 @@
+# E-029: pinned toolchain, edition 2024. Bumps are deliberate PRs.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

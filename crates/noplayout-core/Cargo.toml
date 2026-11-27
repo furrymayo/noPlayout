@@ -1,0 +1,31 @@
+[package]
+name = "noplayout-core"
+description = "noPlayout engine library and the headless noplayout-engine binary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "noplayout-engine"
+path = "src/bin/noplayout-engine.rs"
+
+[dependencies]
+noplayout-proto.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+directories.workspace = true
+interprocess = { workspace = true, features = ["tokio"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

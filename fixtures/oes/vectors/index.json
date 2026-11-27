@@ -1,0 +1,85 @@
+{
+ "generator": "fixtures/oes/tools/gen_vectors.py",
+ "per_sport": [
+  {
+   "file": "basketball.jsonl",
+   "length": 23,
+   "packets": 240,
+   "seed": 1001,
+   "sport": "Basketball",
+   "type": "74"
+  },
+  {
+   "file": "baseball.jsonl",
+   "length": 52,
+   "packets": 240,
+   "seed": 1002,
+   "sport": "Baseball",
+   "type": "74"
+  },
+  {
+   "file": "softball.jsonl",
+   "length": 75,
+   "packets": 240,
+   "seed": 1003,
+   "sport": "Softball",
+   "type": "74"
+  },
+  {
+   "file": "football.jsonl",
+   "length": 24,
+   "packets": 240,
+   "seed": 1004,
+   "sport": "Football",
+   "type": "66"
+  },
+  {
+   "file": "volleyball.jsonl",
+   "length": 42,
+   "packets": 240,
+   "seed": 1005,
+   "sport": "Volleyball",
+   "type": "76"
+  },
+  {
+   "file": "lacrosse.jsonl",
+   "length": 47,
+   "packets": 240,
+   "seed": 1006,
+   "sport": "Lacrosse",
+   "type": "6c"
+  },
+  {
+   "file": "hockey.jsonl",
+   "length": 51,
+   "packets": 240,
+   "seed": 1007,
+   "sport": "Hockey",
+   "type": "6c"
+  },
+  {
+   "file": "wrestling.jsonl",
+   "length": 42,
+   "packets": 240,
+   "seed": 1008,
+   "sport": "Wrestling",
+   "type": "77"
+  },
+  {
+   "file": "soccer.jsonl",
+   "length": 28,
+   "packets": 240,
+   "seed": 1009,
+   "sport": "Soccer",
+   "type": "73"
+  }
+ ],
+ "stream_cases": [
+  "captured_datagram",
+  "two_senders",
+  "split_frame_with_interloper",
+  "foreign_fragment_not_spliced",
+  "repeat_datagrams",
+  "byte_stream_chunked"
+ ]
+}

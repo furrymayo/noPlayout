@@ -1,0 +1,23 @@
+[package]
+name = "xtask"
+description = "cargo xtask: fetch CEF, dev-bundle the renderer, run, self-test, preflight"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# The macOS dev bundle is made with the same library code that cef's `bundle-cef-app` runs
+# (cef::build_util::mac::bundle), called directly so release bundles work too.
+[target.'cfg(target_os = "macos")'.dependencies]
+cef.workspace = true
+semver.workspace = true
+
+[lints]
+workspace = true

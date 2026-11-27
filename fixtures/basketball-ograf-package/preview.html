@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basketball OGraf Package – Preview</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1114; --panel:#181b20; --line:#2a2e35; --txt:#e6e8eb; --mut:#8b929c; --acc:#f5b700; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:13px/1.4 system-ui, sans-serif; display:grid; grid-template-columns: 1fr 380px; height:100vh; }
+  #viewport { position:relative; display:flex; align-items:center; justify-content:center; padding:16px; overflow:hidden; }
+  #frame { position:relative; aspect-ratio:16/9; width:100%; max-height:100%; background:#30343a; overflow:hidden; box-shadow:0 0 0 1px var(--line); }
+  #frame.checker { background: repeating-conic-gradient(#2a2d32 0 25%, #34383e 0 50%) 0 0/40px 40px; }
+  #frame.court { background: linear-gradient(180deg,#5a3d22,#a8743f 55%,#c48a4c); }
+  #frame .safe { position:absolute; inset:5%; border:1px dashed rgba(255,255,255,.25); pointer-events:none; z-index:999; display:none; }
+  #frame.show-safe .safe { display:block; }
+  #frame > .layer { position:absolute; inset:0; }
+  aside { background:var(--panel); border-left:1px solid var(--line); overflow:auto; padding:14px; display:flex; flex-direction:column; gap:12px; }
+  h1 { font-size:14px; margin:0; letter-spacing:.04em; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--mut); margin:4px 0 6px; }
+  select, textarea, button, input[type=text] { font:inherit; color:var(--txt); background:#0f1114; border:1px solid var(--line); border-radius:6px; }
+  select, input[type=text] { padding:6px; width:100%; }
+  textarea { width:100%; min-height:160px; padding:8px; font-family:ui-monospace, monospace; font-size:12px; resize:vertical; }
+  button { padding:7px 10px; cursor:pointer; }
+  button:hover { border-color:#4a505a; }
+  button.primary { background:var(--acc); color:#111; border-color:var(--acc); font-weight:600; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .row > * { flex: 1 1 auto; }
+  #layers .layer-item { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border:1px solid var(--line); border-radius:6px; margin-bottom:4px; cursor:pointer; }
+  #layers .layer-item.sel { border-color:var(--acc); }
+  #layers .badge { color:var(--mut); font-size:11px; }
+  #log { font-family:ui-monospace, monospace; font-size:11px; color:var(--mut); white-space:pre-wrap; max-height:160px; overflow:auto; background:#0f1114; border:1px solid var(--line); border-radius:6px; padding:6px; }
+  label.chk { display:flex; gap:6px; align-items:center; flex:0 0 auto; color:var(--mut); }
+  .action { display:flex; gap:6px; margin-bottom:6px; }
+  .action input { flex:1; font-family:ui-monospace,monospace; font-size:11px; }
+  .action button { flex:0 0 140px; text-align:left; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="frame" class="checker"><div class="safe"></div></div></div>
+<aside>
+  <h1>Basketball OGraf Package — Preview</h1>
+  <div>
+    <h2>Add graphic</h2>
+    <div class="row"><select id="graphic"></select><button id="add" class="primary" style="flex:0 0 auto">Load layer</button></div>
+  </div>
+  <div><h2>Layers</h2><div id="layers"></div></div>
+  <div>
+    <h2>Selected layer</h2>
+    <div class="row">
+      <button id="play" class="primary">Play / Next</button>
+      <button id="stop">Stop</button>
+      <button id="dispose">Remove</button>
+    </div>
+    <div class="row" style="margin-top:6px"><label class="chk"><input type="checkbox" id="skip"> skipAnimation</label></div>
+  </div>
+  <div>
+    <h2>Data (updateAction)</h2>
+    <textarea id="data" spellcheck="false"></textarea>
+    <div class="row"><button id="update">Send update</button><button id="reset">Reset to defaults</button></div>
+  </div>
+  <div><h2>Custom actions</h2><div id="actions"><span class="badge">—</span></div></div>
+  <div>
+    <h2>View</h2>
+    <div class="row">
+      <select id="bg"><option value="checker">Checkerboard</option><option value="court">Court-ish colour</option><option value="plain">Grey</option></select>
+      <label class="chk"><input type="checkbox" id="safe"> Safe area</label>
+    </div>
+  </div>
+  <div><h2>Log</h2><div id="log"></div></div>
+</aside>
+<script type="module">
+const GRAPHICS = [
+  'bball-scorebug', 'bball-lower-third', 'bball-matchup', 'bball-stat-card', 'bball-ticker', 'bball-sponsor-bug',
+];
+const $ = (s) => document.querySelector(s);
+const frame = $('#frame');
+const layers = [];
+let selected = null;
+let tagCounter = 0;
+
+const log = (...a) => {
+  const line = a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
+  $('#log').textContent = `${new Date().toLocaleTimeString()}  ${line}\n` + $('#log').textContent;
+};
+
+async function fetchManifest(id) {
+  const res = await fetch(`./${id}/${id}.ograf.json`);
+  return res.json();
+}
+function defaultsFromSchema(schema) {
+  const out = {};
+  for (const [k, v] of Object.entries(schema?.properties || {})) if ('default' in v) out[k] = v.default;
+  return out;
+}
+
+for (const id of GRAPHICS) {
+  const m = await fetchManifest(id);
+  $('#graphic').insertAdjacentHTML('beforeend', `<option value="${id}">${m.name}</option>`);
+}
+
+async function addLayer(id, data) {
+  const manifest = await fetchManifest(id);
+  const mod = await import(`./${id}/${manifest.main}`);
+  const tag = `ograf-preview-${++tagCounter}`;
+  customElements.define(tag, class extends mod.default {});
+  const holder = document.createElement('div');
+  holder.className = 'layer';
+  const el = document.createElement(tag);
+  holder.appendChild(el);
+  frame.appendChild(holder);
+  const layer = { id, manifest, el, holder, data: data ?? defaultsFromSchema(manifest.schema) };
+  const r = await el.load({ data: layer.data, renderType: 'realtime', renderCharacteristics: {} });
+  log(`load ${id}`, r);
+  layers.push(layer);
+  select(layer);
+  return layer;
+}
+
+function renderLayers() {
+  $('#layers').innerHTML = '';
+  layers.forEach((l, i) => {
+    const d = document.createElement('div');
+    d.className = 'layer-item' + (l === selected ? ' sel' : '');
+    d.innerHTML = `<span>${i + 1}. ${l.manifest.name}</span><span class="badge">step ${l.el.currentStep ?? '–'}</span>`;
+    d.onclick = () => select(l);
+    $('#layers').appendChild(d);
+  });
+}
+
+function select(layer) {
+  selected = layer;
+  renderLayers();
+  if (!layer) { $('#data').value = ''; $('#actions').innerHTML = '<span class="badge">—</span>'; return; }
+  $('#data').value = JSON.stringify(layer.el.state ?? layer.data, null, 2);
+  const acts = layer.manifest.customActions || [];
+  $('#actions').innerHTML = acts.length ? '' : '<span class="badge">none</span>';
+  for (const a of acts) {
+    const row = document.createElement('div');
+    row.className = 'action';
+    const payload = a.schema ? JSON.stringify(defaultsFromSchema(a.schema)) : '';
+    row.innerHTML = `<button title="${a.description || ''}">${a.name}</button>` + (a.schema ? `<input type="text" value='${payload}'>` : '<span></span>');
+    row.querySelector('button').onclick = async () => {
+      let p = {};
+      try { p = a.schema ? JSON.parse(row.querySelector('input').value || '{}') : {}; } catch (e) { return log('bad JSON', e.message); }
+      log(`customAction ${a.id}`, await layer.el.customAction({ id: a.id, payload: p, skipAnimation: $('#skip').checked }));
+      $('#data').value = JSON.stringify(layer.el.state, null, 2);
+    };
+    $('#actions').appendChild(row);
+  }
+}
+
+$('#add').onclick = () => addLayer($('#graphic').value);
+$('#play').onclick = async () => { if (!selected) return; log('playAction', await selected.el.playAction({ delta: 1, skipAnimation: $('#skip').checked })); renderLayers(); };
+$('#stop').onclick = async () => { if (!selected) return; log('stopAction', await selected.el.stopAction({ skipAnimation: $('#skip').checked })); renderLayers(); };
+$('#dispose').onclick = async () => {
+  if (!selected) return;
+  log('dispose', await selected.el.dispose());
+  selected.holder.remove();
+  layers.splice(layers.indexOf(selected), 1);
+  select(layers[layers.length - 1] || null);
+};
+$('#update').onclick = async () => {
+  if (!selected) return;
+  let d; try { d = JSON.parse($('#data').value); } catch (e) { return log('bad JSON', e.message); }
+  log('updateAction', await selected.el.updateAction({ data: d, skipAnimation: $('#skip').checked }));
+};
+$('#reset').onclick = () => { if (selected) $('#data').value = JSON.stringify(defaultsFromSchema(selected.manifest.schema), null, 2); };
+$('#bg').onchange = (e) => { frame.classList.remove('checker', 'court'); if (e.target.value !== 'plain') frame.classList.add(e.target.value); };
+$('#safe').onchange = (e) => frame.classList.toggle('show-safe', e.target.checked);
+
+// hooks for automated testing
+window.__preview = { addLayer, layers, select };
+</script>
+</body>
+</html>
