@@ -8,7 +8,8 @@
 //! thread per plane (`DumpSink` with `--dump-paints`, else a counting sink); a 10 Hz monitor
 //! raises `SenderStall`/`SenderStuck`, the pacer raises `PaintStall` (K2g). Dump options may
 //! also come from `NOPLAYOUT_DUMP_PAINTS`, `NOPLAYOUT_DUMP_FRAMES`, `NOPLAYOUT_DUMP_CROP`
-//! (`;`-separated rectangles), so the engine's children inherit them. If the control socket
+//! (`;`-separated rectangles) and `NOPLAYOUT_DUMP_AFTER` (dump once that file exists), so the
+//! engine's children inherit them. If the control socket
 //! closes without a `Shutdown`, exit after 3 s (orphan rule, PLAN §4.2).
 // TODO(M2): NdiSink behind the same lanes; Fill+Alpha single-plane mode. (STATUS.md)
 // TODO(M1): monitor tap and divergence threads (§2.4a) come with the supervisor (task 8).
@@ -38,6 +39,7 @@ struct Options {
     rate: Rate,
     dump: Option<PathBuf>,
     frames: Option<u64>,
+    start_after: Option<PathBuf>,
     crop: sink::Crop,
 }
 
@@ -57,6 +59,7 @@ fn parse_options(args: &[String], env: impl Fn(&str) -> Option<String>) -> Resul
         rate: Rate::P5994,
         dump: env("NOPLAYOUT_DUMP_PAINTS").map(PathBuf::from),
         frames: None,
+        start_after: env("NOPLAYOUT_DUMP_AFTER").map(PathBuf::from),
         crop: Vec::new(),
     };
     if let Some(r) = env("NOPLAYOUT_RATE") {
@@ -199,6 +202,7 @@ fn run() -> Result<ExitCode, String> {
             epoch_mono_ns: ep.mono_ns,
             u0_100ns: ep.utc_100ns,
             frames: opts.frames,
+            start_after: opts.start_after.clone(),
             fault,
             clock: Arc::new(pacer::RealClock),
         },

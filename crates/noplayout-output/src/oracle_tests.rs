@@ -110,6 +110,7 @@ fn dump_run(
             epoch_mono_ns: epoch,
             u0_100ns: 0,
             frames: Some(frames),
+            start_after: None,
             fault,
             clock: virt.clone(),
         },

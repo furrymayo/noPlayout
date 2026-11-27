@@ -29,12 +29,13 @@ fn main() -> Result<()> {
         Some("bundle") => bundle(release).map(|_| ()),
         Some("kit") => kit(),
         Some("self-test") => self_test(release).map(|_| ()),
+        Some("conformance") => conformance(release, &args[1..]),
         Some("run") => run(release),
         Some("preflight") => preflight(),
         Some("licences") => licences(),
         _ => {
             eprintln!(
-                "usage: cargo xtask <cef | web | bundle | kit | self-test | run | preflight | licences> [--release]"
+                "usage: cargo xtask <cef | web | bundle | kit | self-test | conformance | run | preflight | licences> [--release]"
             );
             std::process::exit(2);
         }
@@ -371,6 +372,29 @@ fn build_headless(release: bool) -> Result<PathBuf> {
     status(build)?;
     bundle(release)?;
     Ok(profile_dir(release).join(format!("noplayout-engine{}", std::env::consts::EXE_SUFFIX)))
+}
+
+/// `cargo xtask conformance [--release] [conformance | pixels] [--bless] [--only NAME]`: M1
+/// tasks 9 and 10 (`tests/conformance`) against freshly built engine, output and renderer. The
+/// host runtime must be built (`cargo xtask web`); on Linux run it under `xvfb-run`.
+fn conformance(release: bool, rest: &[String]) -> Result<()> {
+    build_headless(release)?;
+    let mut build = cargo();
+    build.args(["build", "--locked", "--package", "noplayout-conformance"]);
+    if release {
+        build.arg("--release");
+    }
+    status(build)?;
+    if !root().join("web/dist/host/renderer.html").exists() {
+        web()?;
+    }
+    let exe = profile_dir(release).join(format!(
+        "noplayout-conformance{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let mut run = Command::new(exe);
+    run.args(rest.iter().filter(|a| *a != "--release"));
+    status(run)
 }
 
 /// Build engine, output and renderer, then run the engine's headless self-test.

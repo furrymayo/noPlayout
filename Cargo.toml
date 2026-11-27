@@ -13,6 +13,7 @@ members = [
     "crates/noplayout-datasource",
     "crates/noplayout-decoder-oes",
     "crates/xtask",
+    "tests/conformance",
 ]
 
 [workspace.package]

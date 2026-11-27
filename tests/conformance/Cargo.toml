@@ -1,0 +1,16 @@
+[package]
+name = "noplayout-conformance"
+description = "M1 conformance and pixel tests: every EBU example and Basketball graphic through the real CEF renderer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+noplayout-core.workspace = true
+png.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

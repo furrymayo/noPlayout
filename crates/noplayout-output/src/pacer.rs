@@ -29,6 +29,9 @@ pub struct Config {
     pub u0_100ns: i64,
     /// Stop after this many slots that carried a paint (`--frames N`).
     pub frames: Option<u64>,
+    /// Dump only from when this file exists (`NOPLAYOUT_DUMP_AFTER`): lets a test driver capture
+    /// a settled graphic. Slots before it are paced as usual but not offered to the sinks.
+    pub start_after: Option<std::path::PathBuf>,
     pub fault: Option<Fault>,
     /// The pacer's time source: [`RealClock`] in the product; tests use a virtual one so the
     /// dump-path fault tests do not depend on the host's timer.
@@ -191,6 +194,7 @@ fn run(
     let mut last_seq = 0u64;
     let mut hysteresis_until = 0u64;
     let mut sent = 0u64;
+    let mut gate_open = false;
     let mut k = clock::k_at_or_after(epoch, cfg.clock.now() + period, rate);
     while !control.stop.load(Ordering::Relaxed) {
         let tk = clock::t_k(epoch, k, rate);
@@ -344,6 +348,15 @@ fn run(
                 if let Some(c) = spliced {
                     pick = Some((m, Arc::new(c)));
                 }
+            }
+        }
+        if let Some(p) = &cfg.start_after
+            && !gate_open
+        {
+            gate_open = p.exists();
+            if !gate_open {
+                k += 1;
+                continue;
             }
         }
         let Some((meta, conv)) = pick else {

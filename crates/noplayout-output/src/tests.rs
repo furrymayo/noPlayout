@@ -102,6 +102,7 @@ fn run_pacer(fault: Option<Fault>, frames: u64) -> (Vec<Row>, Vec<Event>) {
             epoch_mono_ns: clock::mono_ns(),
             u0_100ns: 1_000,
             frames: Some(frames),
+            start_after: None,
             fault,
             clock: Arc::new(pacer::RealClock),
         },
