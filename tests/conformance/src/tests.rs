@@ -26,18 +26,18 @@ fn blank() -> Image {
 }
 
 #[test]
-fn diff_ignores_colour_under_low_alpha_and_counts_the_rest() {
+fn diff_compares_premultiplied_colour_and_alpha() {
     let (a, mut b) = (blank(), blank());
-    b.0[..4].copy_from_slice(&[255, 0, 0, 10]); // colour noise under alpha 10 is not a difference
-    assert_eq!(diff(&a, &b, 2), (1, 10)); // but alpha 10 vs 0 is
+    b.0[..4].copy_from_slice(&[255, 0, 0, 10]); // premultiplied red 10, alpha 10
+    assert_eq!(diff(&a, &b, 2), (1, 10));
     let mut c = blank();
-    c.0[..4].copy_from_slice(&[200, 0, 0, 10]);
-    assert_eq!(diff(&b, &c, 2), (0, 0));
+    c.0[..4].copy_from_slice(&[200, 0, 0, 10]); // premultiplied 8 vs 10: within ±2
+    assert_eq!(diff(&b, &c, 2), (0, 2));
     c.0[4..8].copy_from_slice(&[0, 0, 0, 255]);
     let mut d = blank();
     d.0[..4].copy_from_slice(&[200, 0, 0, 10]);
-    d.0[4..8].copy_from_slice(&[2, 0, 0, 255]);
-    assert_eq!(diff(&c, &d, 2), (0, 2));
+    d.0[4..8].copy_from_slice(&[3, 0, 0, 255]);
+    assert_eq!(diff(&c, &d, 2), (1, 3));
 }
 
 #[test]

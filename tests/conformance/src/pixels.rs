@@ -149,16 +149,16 @@ pub fn read_png(path: &Path) -> Result<Image, String> {
     Ok(Image(buf))
 }
 
-/// Pixels outside ±`tol` (alpha everywhere; colour where both alphas are ≥ 16) and the largest
-/// difference seen.
+/// Pixels outside ±`tol` and the largest difference seen. Colour is compared premultiplied
+/// (c·α/255), as a keyer composites it: un-premultiplied colour under low alpha only carries
+/// 8-bit quantisation, amplified by 255/α.
 pub fn diff(a: &Image, b: &Image, tol: u8) -> (usize, u8) {
     let (mut bad, mut worst) = (0, 0u8);
+    let pm = |c: u8, a: u8| (u16::from(c) * u16::from(a) + 127) / 255;
     for (p, q) in a.0.as_chunks::<4>().0.iter().zip(b.0.as_chunks::<4>().0) {
         let mut d = p[3].abs_diff(q[3]);
-        if p[3] >= 16 && q[3] >= 16 {
-            for c in 0..3 {
-                d = d.max(p[c].abs_diff(q[c]));
-            }
+        for c in 0..3 {
+            d = d.max(pm(p[c], p[3]).abs_diff(pm(q[c], q[3])) as u8);
         }
         worst = worst.max(d);
         if d > tol {

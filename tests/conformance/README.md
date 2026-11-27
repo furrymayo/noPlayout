@@ -24,13 +24,13 @@ asserts:
 
 Each case gets its own engine with the output process dumping settled slots
 (`NOPLAYOUT_DUMP_AFTER`). The last slot's FILL (straight BGRA) and KEY are joined into a
-straight-alpha RGBA PNG and compared with a golden at ±2 LSB. Colour is compared only where
-alpha ≥ 16 in both images.
+straight-alpha RGBA PNG and compared with a golden at ±2 LSB: alpha, and colour premultiplied
+(c·α/255) as a keyer composites it.
 
 | Case | Golden | Extra check |
 |---|---|---|
 | `fixtures/alpha-ramp` | `goldens/shape/` (every OS, no pixel may differ) | the 16 patches' alpha within ±1 of 17·i, white (done-when (b)) |
-| `fixtures/gradient-shape` | `goldens/shape/` (every OS, no pixel may differ) | none |
+| `fixtures/gradient-shape` | `goldens/<os>-<arch>/` (geometry antialiasing differs between rasterisers: about 2,900 edge pixels Metal vs software GL) | none |
 | the six Basketball graphics (ticker paused) | `goldens/<os>-<arch>/` (text; up to 0.05 % of pixels may differ) | none |
 | `scorebug-sequence` | none | 40 slots across the entry animation: frames change, corners alpha 0, mostly transparent, opaque areas, antialiased edges (done-when (b)) |
 

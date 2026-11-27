@@ -145,7 +145,14 @@ fn run() -> Result<bool, String> {
         let mut cases: Vec<(String, pixels::Case)> = Vec::new();
         for n in ["alpha-ramp", "gradient-shape"] {
             cases.push((
-                "shape".into(),
+                // The ramp is exact on every OS; the shape fixture's geometry antialiasing differs
+                // between rasterisers (Metal vs software GL: about 2,900 edge pixels), so it is
+                // per-OS like the text.
+                if n == "alpha-ramp" {
+                    "shape".into()
+                } else {
+                    os.clone()
+                },
                 pixels::Case {
                     name: n,
                     dir: fx.join(n),

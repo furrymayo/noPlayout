@@ -116,12 +116,15 @@ Tasks 9 and 10 (conformance, pixels): `tests/conformance` (`cargo xtask conforma
 README). Locally on macOS arm64 all 16 conformance runs pass: the 9 EBU examples, the 6
 Basketball graphics and a `stepCount: -1` fixture. Injected faults are caught: a console
 error, a non-200 result and a wrong `currentStep`. The pixel cases pass against the blessed
-goldens: the alpha-ramp (16 patches at 17·i ± 1), the gradient/shape fixture, six per-OS
-Basketball goldens, and the scorebug's 40-slot entry sequence (animates, transparent
-background, antialiased edges). Two repeat runs were stable: 0 px beyond ±2, except 1 px in
-the matchup. Linux goldens come from the first CI run's artifact. CI: required on linux and
-macos-arm64, informational on windows and macos-x64 (done-when (a) allows Windows by
-`preflight`). The output gained `NOPLAYOUT_DUMP_AFTER`, a dump start gate.
+goldens: the alpha-ramp (16 patches at 17·i ± 1; one golden for every OS, which Linux CI
+matches exactly), the per-OS gradient/shape and Basketball goldens, and the scorebug's
+40-slot entry sequence (animates, transparent background, antialiased edges). Two repeat
+runs were stable: 0 px beyond ±2, except 1 px in the matchup. CI linux (all 16 conformance
+runs pass there too) gave the linux-x86_64 goldens. I checked them by eye: clean text, no
+missing glyphs. Its shape render differs from macOS only at antialiased geometry edges
+(about 2,900 px), so shape goldens are per-OS; colour is compared premultiplied. CI: required
+on linux and macos-arm64, informational on windows and macos-x64 (done-when (a) allows
+Windows by `preflight`). The output gained `NOPLAYOUT_DUMP_AFTER`, a dump start gate.
 
 Still pending: M1 task 8 (supervisor/recovery and S7a). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
