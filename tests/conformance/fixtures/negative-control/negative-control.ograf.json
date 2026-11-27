@@ -1,0 +1,17 @@
+{
+    "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+    "name": "noPlayout negative control",
+    "description": "Test-only conformance fixture: misbehaves on purpose, chosen by the load data's `fault` (console-error, uncaught, status, wrong-step), so the harness can prove it fails.",
+    "id": "noplayout-negative-control",
+    "version": "1",
+    "main": "graphic.mjs",
+    "supportsRealTime": true,
+    "supportsNonRealTime": false,
+    "stepCount": 2,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "fault": { "type": "string", "default": "none" }
+        }
+    }
+}

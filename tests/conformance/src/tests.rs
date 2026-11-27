@@ -55,3 +55,15 @@ fn ramp_check_accepts_nominal_and_names_a_bad_patch() {
     assert_eq!(f.len(), 1, "{f:?}");
     assert!(f[0].contains("patch 5"));
 }
+
+#[test]
+fn a_negative_control_passes_only_on_its_own_detector() {
+    use crate::{NEGATIVE, negative_verdict};
+    let (fault, detector) = NEGATIVE[2];
+    let hit = vec![r#"play 10: {"seq":3,"statusCode":500}"#.to_owned()];
+    assert!(negative_verdict(fault, detector, &hit).is_empty());
+    // Failing for another reason, or not failing at all, is not proof.
+    let other = vec!["console error: something else".to_owned()];
+    assert_eq!(negative_verdict(fault, detector, &other).len(), 1);
+    assert_eq!(negative_verdict(fault, detector, &[]).len(), 1);
+}

@@ -20,6 +20,22 @@ asserts:
 - `stepCount: -1` graphics play until they report the end (at most 32 plays);
 - after dispose the instance leaves the mirror.
 
+## Negative controls
+
+`fixtures/negative-control` (test-only) misbehaves on purpose, chosen by its load data's
+`fault`, so CI proves on every lane that the harness fails a graphic that:
+
+| `fault` | Misbehaviour | The control passes when the failure reads |
+|---|---|---|
+| `console-error` | `console.error` during load | `console error: negative-control: deliberate console.error` |
+| `uncaught` | an uncaught exception from a timer during load | `negative-control: deliberate uncaught exception` |
+| `status` | every play answers `statusCode` 500 | `"statusCode":500` |
+| `wrong-step` | play #1 reports `currentStep` 1 | `play #1: currentStep 1, expected 0` |
+
+A control the harness passes, or fails without the intended detector, fails the run. Run them
+alone
+with `cargo xtask conformance --release negative`.
+
 ## Pixels
 
 Each case gets its own engine with the output process dumping settled slots

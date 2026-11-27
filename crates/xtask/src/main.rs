@@ -374,7 +374,7 @@ fn build_headless(release: bool) -> Result<PathBuf> {
     Ok(profile_dir(release).join(format!("noplayout-engine{}", std::env::consts::EXE_SUFFIX)))
 }
 
-/// `cargo xtask conformance [--release] [conformance | pixels | recovery] [--bless] [--only NAME]`: M1
+/// `cargo xtask conformance [--release] [conformance | negative | pixels | recovery] [--bless] [--only NAME]`: M1
 /// tasks 9 and 10 (`tests/conformance`) against freshly built engine, output and renderer. The
 /// host runtime must be built (`cargo xtask web`); on Linux run it under `xvfb-run`.
 fn conformance(release: bool, rest: &[String]) -> Result<()> {

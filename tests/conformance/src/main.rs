@@ -1,6 +1,7 @@
-//! `noplayout-conformance [conformance | pixels | recovery | all] [--bless] [--only NAME] [--bin DIR]
-//! [--host DIR]`: M1 tasks 9 and 10 against the built engine, output process and CEF renderer
-//! (`cargo xtask conformance` builds them first). Exit 0 when everything passes. Candidate PNGs
+//! `noplayout-conformance [conformance | negative | pixels | recovery | all] [--bless] [--only NAME]
+//! [--bin DIR] [--host DIR]`: M1 tasks 9 and 10 against the built engine, output process and CEF
+//! renderer (`cargo xtask conformance` builds them first). Exit 0 when everything passes,
+//! including the negative controls failing as they must. Candidate PNGs
 //! of failed or missing goldens, and `report.json`, go to `target/conformance/`; `--bless`
 //! writes the goldens instead.
 
@@ -38,6 +39,31 @@ const BASKETBALL: [&str; 6] = [
 /// Per-OS goldens may differ from the golden in this many pixels (text rasterisation noise).
 const OS_GOLDEN_BUDGET: usize = pixels::W * pixels::H / 2000;
 
+/// A8's negative controls: the fixture's `fault` and the text its detector's failure must carry.
+const NEGATIVE: [(&str, &str); 4] = [
+    (
+        "console-error",
+        "console error: negative-control: deliberate console.error",
+    ),
+    (
+        "uncaught",
+        "negative-control: deliberate uncaught exception",
+    ),
+    ("status", "\"statusCode\":500"),
+    ("wrong-step", "play #1: currentStep 1, expected 0"),
+];
+
+/// A negative control passes when the harness failed the graphic with the intended detector.
+fn negative_verdict(fault: &str, detector: &str, failures: &[String]) -> Vec<String> {
+    if failures.iter().any(|f| f.contains(detector)) {
+        vec![]
+    } else {
+        vec![format!(
+            "the harness did not fail `{fault}` with its detector ({detector}); got {failures:?}"
+        )]
+    }
+}
+
 struct Args {
     what: String,
     bless: bool,
@@ -64,7 +90,7 @@ fn args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     while let Some(s) = it.next() {
         match s.as_str() {
-            "conformance" | "pixels" | "recovery" | "all" => a.what = s,
+            "conformance" | "negative" | "pixels" | "recovery" | "all" => a.what = s,
             "--bless" => a.bless = true,
             "--only" => a.only = it.next(),
             "--bin" => a.bin = it.next().ok_or("--bin needs a value")?.into(),
@@ -133,6 +159,32 @@ fn run() -> Result<bool, String> {
                     &o.failures,
                     &format!(" ({} actions)", o.actions),
                 );
+            }
+            e.stop()?;
+        }
+    }
+
+    // A8: negative controls. The harness must fail a graphic that logs a console error, throws an
+    // uncaught exception, answers non-200 or reports the wrong `currentStep`; each control
+    // passes only if the matching detector fired.
+    if a.what == "all" || a.what == "negative" {
+        let controls: Vec<_> = NEGATIVE
+            .iter()
+            .filter(|(f, _)| want(&format!("negative-{f}")) || want("negative-control"))
+            .collect();
+        if !controls.is_empty() {
+            let dir = a.root.join("tests/conformance/fixtures/negative-control");
+            let e = engine::Engine::start(engine::Opts {
+                bin: &a.bin,
+                host: &a.host,
+                port: 18731,
+                dir: work.join("negative"),
+                env: vec![],
+            })?;
+            for (i, (fault, detector)) in controls.into_iter().enumerate() {
+                let o = conformance::run(&e, &dir, 10 + i as u32, Some(&json!({"fault": fault})));
+                let fails = negative_verdict(fault, detector, &o.failures);
+                line(&format!("negative/{fault}"), &fails, " (must fail)");
             }
             e.stop()?;
         }
