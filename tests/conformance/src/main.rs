@@ -36,8 +36,21 @@ const BASKETBALL: [&str; 6] = [
     "bball-stat-card",
     "bball-ticker",
 ];
-/// Per-OS goldens may differ from the golden in this many pixels (text rasterisation noise).
-const OS_GOLDEN_BUDGET: usize = pixels::W * pixels::H / 2000;
+/// Basketball per-OS goldens may differ in this many pixels beyond ±2 LSB (text rasterisation
+/// noise; measured 0–2 px run to run, ADR 0064).
+const TEXT_GOLDEN_BUDGET: usize = 32;
+/// The scorebug with a changed score, compared with the unchanged golden, must fail (ADR 0064).
+const CHANGED_SCORE: &str = "bball-scorebug-changed-score";
+
+/// Pixels a case may differ from its golden beyond ±2 LSB: geometry goldens (`shape`, and the
+/// per-OS `gradient-shape`) none, Basketball text goldens [`TEXT_GOLDEN_BUDGET`].
+fn budget(group: &str, name: &str) -> usize {
+    if group == "shape" || name == "gradient-shape" {
+        0
+    } else {
+        TEXT_GOLDEN_BUDGET
+    }
+}
 
 /// A8's negative controls: the fixture's `fault` and the text its detector's failure must carry.
 const NEGATIVE: [(&str, &str); 4] = [
@@ -210,6 +223,7 @@ fn run() -> Result<bool, String> {
                     name: n,
                     dir: fx.join(n),
                     data: None,
+                    update: None,
                     settle: Duration::from_millis(500),
                     frames: 2,
                     before_play: false,
@@ -224,6 +238,7 @@ fn run() -> Result<bool, String> {
                     dir: bb.join(n),
                     // The ticker cycles items on a timer; paused, it shows its first item.
                     data: (n == "bball-ticker").then(|| json!({"paused": true})),
+                    update: None,
                     settle: Duration::from_millis(3000),
                     frames: 2,
                     before_play: false,
@@ -264,11 +279,7 @@ fn run() -> Result<bool, String> {
                     c.name
                 ));
             } else {
-                let budget = if group == "shape" {
-                    0
-                } else {
-                    OS_GOLDEN_BUDGET
-                };
+                let budget = budget(group, c.name);
                 let (bad, worst) = pixels::diff(img, &pixels::read_png(&golden)?, 2);
                 extra = format!(" ({bad} px beyond ±2, max diff {worst})");
                 if bad > budget {
@@ -280,11 +291,50 @@ fn run() -> Result<bool, String> {
             }
             line(&name, &fails, &extra);
         }
+        // Negative control: a changed score must not pass the scorebug's golden.
+        if want(CHANGED_SCORE) && !a.bless {
+            let name = format!("pixels/{os}/{CHANGED_SCORE}");
+            let golden = goldens.join(&os).join("bball-scorebug.png");
+            let c = pixels::Case {
+                name: CHANGED_SCORE,
+                dir: bb.join("bball-scorebug"),
+                data: None,
+                update: Some(json!({"awayScore": 77, "homeScore": 88})),
+                settle: Duration::from_millis(3000),
+                frames: 2,
+                before_play: false,
+            };
+            let mut extra = " (must differ from bball-scorebug's golden)".to_owned();
+            let fails = match (
+                pixels::read_png(&golden),
+                pixels::capture(&a.bin, &a.host, &work, &c),
+            ) {
+                (Err(e), _) => vec![format!("no golden to compare with: {e}")],
+                (_, Err(e)) => vec![e],
+                (Ok(g), Ok(cap)) => match cap.frames.last() {
+                    None => vec!["no frames dumped".into()],
+                    Some(img) => {
+                        let (bad, _) = pixels::diff(img, &g, 2);
+                        let budget = budget(&os, "bball-scorebug");
+                        extra = format!(" ({bad} px beyond ±2; must exceed {budget})");
+                        if bad > budget {
+                            vec![]
+                        } else {
+                            vec![format!(
+                                "a changed score differs in only {bad} px (budget {budget}): the golden compare cannot see it"
+                            )]
+                        }
+                    }
+                },
+            };
+            line(&name, &fails, &extra);
+        }
         if want("scorebug-sequence") {
             let c = pixels::Case {
                 name: "scorebug-sequence",
                 dir: bb.join("bball-scorebug"),
                 data: None,
+                update: None,
                 settle: Duration::from_millis(300),
                 frames: 40,
                 before_play: true,

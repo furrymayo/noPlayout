@@ -67,3 +67,37 @@ fn a_negative_control_passes_only_on_its_own_detector() {
     assert_eq!(negative_verdict(fault, detector, &other).len(), 1);
     assert_eq!(negative_verdict(fault, detector, &[]).len(), 1);
 }
+
+/// ADR 0064's measurement: how far apart the per-OS goldens are (±2 LSB,
+/// premultiplied). `cargo test -p noplayout-conformance -- --ignored --nocapture cross_os`.
+#[test]
+#[ignore = "prints a measurement for ADR 0064"]
+fn cross_os_goldens() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("goldens");
+    let oses = [
+        "linux-x86_64",
+        "macos-aarch64",
+        "macos-x86_64",
+        "windows-x86_64",
+    ];
+    let names = [
+        "gradient-shape",
+        "bball-lower-third",
+        "bball-matchup",
+        "bball-scorebug",
+        "bball-sponsor-bug",
+        "bball-stat-card",
+        "bball-ticker",
+    ];
+    let img = |os: &str, n: &str| {
+        crate::pixels::read_png(&root.join(os).join(format!("{n}.png"))).unwrap()
+    };
+    for n in names {
+        for (i, a) in oses.iter().enumerate() {
+            for b in &oses[i + 1..] {
+                let (bad, worst) = diff(&img(a, n), &img(b, n), 2);
+                println!("{n} {a} vs {b}: {bad} px beyond ±2, max diff {worst}");
+            }
+        }
+    }
+}

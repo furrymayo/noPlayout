@@ -46,9 +46,13 @@ straight-alpha RGBA PNG and compared with a golden at ±2 LSB: alpha, and colour
 | Case | Golden | Extra check |
 |---|---|---|
 | `fixtures/alpha-ramp` | `goldens/shape/` (every OS, no pixel may differ) | the 16 patches' alpha within ±1 of 17·i, white (done-when (b)) |
-| `fixtures/gradient-shape` | `goldens/<os>-<arch>/` (geometry antialiasing differs between rasterisers: about 2,900 edge pixels Metal vs software GL) | none |
-| the six Basketball graphics (ticker paused) | `goldens/<os>-<arch>/` (text; up to 0.05 % of pixels may differ) | none |
+| `fixtures/gradient-shape` | `goldens/<os>-<arch>/`, no pixel may differ (geometry antialiasing differs between rasterisers: 2,889 edge pixels Metal vs the software path; ADR 0064) | none |
+| the six Basketball graphics (ticker paused) | `goldens/<os>-<arch>/` (text; at most 32 pixels may differ, measured noise 0–2) | none |
+| `bball-scorebug-changed-score` | the scorebug's golden | negative control: the scorebug updated to 77–88 must **fail** the scorebug's golden |
 | `scorebug-sequence` | none | 40 slots across the entry animation: frames change, corners alpha 0, mostly transparent, opaque areas, antialiased edges (done-when (b)) |
+
+Goldens exist for all four CI lanes (`linux-x86_64`, `macos-aarch64`, `macos-x86_64`,
+`windows-x86_64`).
 
 Failed or missing goldens write a candidate to `target/conformance/candidates/`, which CI
 uploads as the `conformance-<lane>` artifact. To add or refresh one OS's goldens, take the

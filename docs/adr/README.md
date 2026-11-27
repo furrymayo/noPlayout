@@ -69,3 +69,4 @@ ADRs 0001–0059 were backfilled in M0 from `DECISIONS.md` E-001…E-059 at 561e
 | [0061](0061-provisional-drive-mode.md) | Provisional drive mode per OS (S1a): macOS A, Windows/Linux pending | draft | 2026-11-27 |
 | [0062](0062-host-bus-commit-rules.md) | Host-bus commit rules: replay never commits, lost renderers resolve as 504, late pages get commands live | accepted | 2026-11-27 |
 | [0063](0063-own-paint-ring-transport.md) | Paint ring transport: own ring over libc `mmap` / `CreateFileMappingW`; iceoryx2 not evaluated (supersedes 0042 in part) | accepted | 2026-11-27 |
+| [0064](0064-pixel-golden-budgets.md) | Pixel goldens: per-OS shape goldens, premultiplied colour compare, fixed budgets (0 px shape, ≤ 32 px text) and a changed-score negative control | accepted | 2026-11-27 |

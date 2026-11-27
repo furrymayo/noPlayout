@@ -1,8 +1,8 @@
 //! M1 task 10: pixel tests. A graphic is played in the real CEF renderer, the output process
 //! dumps settled slots (`NOPLAYOUT_DUMP_AFTER`), and the last slot's FILL (straight BGRA) and
-//! KEY are joined into a straight-alpha RGBA image and compared with a PNG golden. Shape
-//! goldens (`goldens/shape/`) serve every OS within ±2 LSB; Basketball goldens contain text and
-//! are per OS (`goldens/<os>-<arch>/`). Colour is compared only where alpha ≥ 16 in both images
+//! KEY are joined into a straight-alpha RGBA image and compared with a PNG golden. The
+//! alpha-ramp golden (`goldens/shape/`) serves every OS; `gradient-shape` and the Basketball
+//! goldens are per OS (`goldens/<os>-<arch>/`, ADR 0064). Colour is compared only where alpha ≥ 16 in both images
 //! (below that, un-premultiplied colour is quantisation noise). Also done-when (b): the
 //! alpha-ramp's 16 patches within ±1 LSB of 17·i, and the scorebug's paint sequence animates
 //! with a transparent background and antialiased edges.
@@ -26,6 +26,8 @@ pub struct Case<'a> {
     pub name: &'a str,
     pub dir: PathBuf,
     pub data: Option<Value>,
+    /// Sent as an `update` after `play` (before the settle), e.g. a changed score.
+    pub update: Option<Value>,
     /// How long after `play` the dump starts (lets entry animations finish).
     pub settle: Duration,
     pub frames: usize,
@@ -59,7 +61,12 @@ pub fn capture(bin: &Path, host: &Path, work: &Path, c: &Case) -> Result<Capture
     if let Some(d) = &data {
         load.extend(["--data", d.as_str()]);
     }
-    for args in [load, vec!["play", "10"]] {
+    let update = c.update.as_ref().map(Value::to_string);
+    let mut steps = vec![load, vec!["play", "10"]];
+    if let Some(u) = &update {
+        steps.push(vec!["update", "10", u.as_str()]);
+    }
+    for args in steps {
         if c.before_play && args[0] == "play" {
             std::thread::sleep(c.settle);
             std::fs::write(&gate, b"").map_err(|e| e.to_string())?;
