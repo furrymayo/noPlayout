@@ -7,6 +7,7 @@
 //! cargo xtask self-test [--release]  build everything headless and run `noplayout-engine --self-test`
 //! cargo xtask run [--release]    build everything and open the noPlayout app
 //! cargo xtask preflight          run the local checks a CI lane cannot, write target/preflight/*.json
+//! cargo xtask licences           E-032: nothing copyleft in noplayout-renderer's tree, on every target
 //! ```
 
 use anyhow::{Context, Result, bail};
@@ -29,9 +30,10 @@ fn main() -> Result<()> {
         Some("self-test") => self_test(release).map(|_| ()),
         Some("run") => run(release),
         Some("preflight") => preflight(),
+        Some("licences") => licences(),
         _ => {
             eprintln!(
-                "usage: cargo xtask <cef | web | bundle | self-test | run | preflight> [--release]"
+                "usage: cargo xtask <cef | web | bundle | self-test | run | preflight | licences> [--release]"
             );
             std::process::exit(2);
         }
@@ -360,9 +362,83 @@ fn preflight() -> Result<()> {
     Ok(())
 }
 
+/// Every target we ship (PLAN §8.1 lanes).
+const TARGETS: [&str; 4] = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+];
+
+/// Licence identifiers that count as copyleft for E-032's renderer rule.
+const COPYLEFT: [&str; 6] = ["GPL", "LGPL", "AGPL", "MPL", "EPL", "CDDL"];
+
+/// True when an SPDX expression names a copyleft licence as a whole word (`MPL-2.0`, `LGPL-2.1+`),
+/// not as part of another word.
+fn is_copyleft(expr: &str) -> bool {
+    expr.split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| COPYLEFT.contains(&word))
+}
+
+/// E-032: `cargo deny` gates the whole graph; this adds "nothing copyleft at all in
+/// noplayout-renderer", which cargo-deny cannot scope to one crate.
+fn licences() -> Result<()> {
+    let mut bad = Vec::new();
+    for target in TARGETS {
+        let out = Command::new(env!("CARGO"))
+            .args([
+                "tree",
+                "--locked",
+                "-p",
+                "noplayout-renderer",
+                "--target",
+                target,
+            ])
+            .args(["-e", "normal,build", "--prefix", "none", "-f", "{p}\t{l}"])
+            .current_dir(root())
+            .output()
+            .context("running cargo tree")?;
+        if !out.status.success() {
+            bail!(
+                "cargo tree failed for {target}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            if let Some((pkg, licence)) = line.split_once('\t')
+                && is_copyleft(licence)
+            {
+                bad.push(format!("{target}: {pkg} ({licence})"));
+            }
+        }
+    }
+    bad.sort();
+    bad.dedup();
+    if !bad.is_empty() {
+        bail!(
+            "copyleft in noplayout-renderer's dependency tree (E-032):\n  {}",
+            bad.join("\n  ")
+        );
+    }
+    println!(
+        "xtask: noplayout-renderer has no copyleft dependencies on {} targets",
+        TARGETS.len()
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copyleft_words_match_whole_identifiers_only() {
+        assert!(is_copyleft("MPL-2.0"));
+        assert!(is_copyleft("MIT OR LGPL-2.1+"));
+        assert!(!is_copyleft("MIT OR Apache-2.0"));
+        assert!(!is_copyleft("thiserror-impl MIT"));
+        assert!(!is_copyleft("Apache-2.0 WITH LLVM-exception"));
+    }
 
     #[test]
     fn cef_pins_match_the_workspace_manifest_and_lock() {
