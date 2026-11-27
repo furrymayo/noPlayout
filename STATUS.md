@@ -44,7 +44,31 @@ standby slot and promotion are task 8 (`Role` exists, nothing sends it yet); the
 browser and monitor JPEGs are M3 (`TODO(M1)` in the renderer); M1 uses the external pump on
 every OS (`TODO(M2)`); the engine falls back to its own clock when no output process is up.
 
-Still pending: M1 tasks 5–10 (output clock, oracle,
+Task 5 (output process, no NDI): `Hello{epoch}` on the shared monotonic clock; an elevated
+pacer thread waits for each `T_k` (precise OS timer to −0.5 ms, then spin), skips a slot it
+wakes for after `T_k + period/2` (`slots_skipped`, never bursts), takes the newest READY
+paint of the active ring with `painted_at ≤ T_k − 1 ms` (mode B: 900-slot hysteresis after a
+crossing skip lets a paint up to 1 ms later through), holds the previous paint when none is
+newer (`held`), converts once into FILL (straight BGRA) + KEY (8-bit alpha), stamps
+`tc(k) = U0 + ⌊k·den·10⁷/num⌋` and offers it to one elevated sender thread per plane through
+a one-deep newest-wins lane (`submit_blocked`, `pair_partial` counted exactly when a slot
+reaches one plane only). `DumpSink` (`--dump-paints <dir> --frames N [--dump-crop x,y,w,h]`,
+or the `NOPLAYOUT_DUMP_*` variables) writes `<plane>/<k>.raw` plus `<plane>.jsonl` with `k`,
+`tc`, the paint and `held`. 10 Hz monitor: `SenderStall` (250 ms) / `SenderStuck` (2 s);
+pacer: `PaintStall` when a paint probe is 250 ms unanswered (K2g); 1 Hz `OutputStats` to the
+engine. The engine sends `Activate{ring, inc, mode}` after `Configure`; the output retries
+the open for 2 s while the renderer creates the ring. `fault-inject` feature
+(`NOPLAYOUT_FAULT_INJECT=<kind>@<slot>[:<ms>]`): repeat, skip, backwards, key-prev, tear,
+tc-bump, block-fill/key (injections 1–6 and 8; 7 is the fixture's). Unit tests drive the
+real pacer against an in-process ring. Gaps: the engine only logs `PaintStall`/`SenderStuck`
+until the supervisor (task 8) acts on them; monitor tap and divergence threads are task 8
+/ M3 (`TODO(M1)`). On the Mac Studio from a gateway shell the pacer wakes up to 64–81 ms
+late and skips most slots: that is the known degraded timer, not reference evidence; timing
+runs go through the Terminal `.command` path (task 7) and bind on the M2 mini (D-020).
+S2 conversion cost (Mac Studio, provisional): 1080p p50 1.5 ms / p95 2.1 ms, 2160p p50
+3.9 ms / p95 4.2 ms (`cargo test --release -p noplayout-output -- --ignored s2_convert`).
+
+Still pending: M1 tasks 6–10 (oracle,
 spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.

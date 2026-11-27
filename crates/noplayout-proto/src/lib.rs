@@ -43,6 +43,12 @@ pub enum Down {
     Configure(RendererConfig),
     /// Renderer: active (full rate) or standby (every 6th slot / 10 fps), §2.4. Sent at promotion.
     Role { active: bool },
+    /// Output: read paints from this renderer incarnation's ring from now on (§2.4a, §2.13).
+    Activate {
+        ring: String,
+        inc: u64,
+        mode: DriveMode,
+    },
 }
 
 /// Video format of a channel.
@@ -96,13 +102,66 @@ pub struct RendererConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Event {
     /// The program page finished loading (main frame), with its HTTP status.
-    PageLoaded { http_status: i32 },
+    PageLoaded {
+        http_status: i32,
+    },
     /// CEF's render process for the program page died (failure kind K2).
-    PageTerminated { status: String },
+    PageTerminated {
+        status: String,
+    },
     /// A console message from the program page (conformance asserts zero errors).
-    Console { error: bool, text: String },
+    Console {
+        error: bool,
+        text: String,
+    },
     /// The renderer could not do what `Configure` asked (ring, browser); it stays up.
-    ConfigureFailed { why: String },
+    ConfigureFailed {
+        why: String,
+    },
+    /// Output: the active ring could not be opened.
+    ActivateFailed {
+        ring: String,
+        why: String,
+    },
+    /// Output, K2g (E-057): a paint probe has been outstanding 250 ms with no newer paint.
+    PaintStall {
+        inc: u64,
+        probe_seq: u64,
+    },
+    /// Output, K5 (§5.4): a plane's `submit` has been in flight 250 ms (slow) or 2 s (stuck).
+    SenderStall {
+        plane: String,
+        in_flight_ms: u64,
+    },
+    SenderStuck {
+        plane: String,
+        in_flight_ms: u64,
+    },
+    /// Output: once a second.
+    OutputStats(OutputStats),
+    /// Output: `--frames N` slots dumped; the dump is complete and closed.
+    DumpComplete {
+        frames: u64,
+    },
+}
+
+/// Output-side counters (§5.3, §5.4). Each is cumulative since the output process started.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputStats {
+    pub slots: u64,
+    /// Slots that resent the previous snapshot (no newer paint).
+    pub held: u64,
+    /// Ready paints freed unread because a newer one was taken.
+    pub superseded: u64,
+    /// Slots dropped because the pacer woke after `T_k + period/2`.
+    pub slots_skipped: u64,
+    pub submit_blocked: u64,
+    pub pair_partial: u64,
+    pub ring_overwrites: u64,
+    /// Pacer wake-up lateness, µs: worst since start.
+    pub late_max_us: u64,
+    pub last_paint_seq: u64,
+    pub active_inc: u64,
 }
 
 /// Messages from a child process to the engine.

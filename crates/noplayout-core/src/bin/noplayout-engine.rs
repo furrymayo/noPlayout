@@ -245,6 +245,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
         _ => noplayout_frames::clock::mono_ns(),
     };
     let mut renderer_events = None;
+    let mut output_events = output.as_ref().and_then(|o| o.take_events());
     if let Some(r) = &renderer {
         renderer_events = r.take_events();
         let spec = noplayout_core::program::ProgramSpec {
@@ -256,8 +257,22 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
             epoch_mono_ns,
             active: true,
         };
+        let mode = spec.mode;
         match noplayout_core::program::open(&bus, &rings, r, spec).await {
-            Ok(o) => tracing::info!(inc = o.inc, ring = %o.ring, "program page configured"),
+            Ok(o) => {
+                tracing::info!(inc = o.inc, ring = %o.ring, "program page configured");
+                if let Some(out) = &output
+                    && let Err(e) = out
+                        .send(noplayout_proto::Down::Activate {
+                            ring: o.ring.clone(),
+                            inc: o.inc,
+                            mode,
+                        })
+                        .await
+                {
+                    tracing::error!("cannot activate the ring on the output process: {e}");
+                }
+            }
             Err(e) => tracing::error!("cannot configure the program page: {e}"),
         }
     }
@@ -288,6 +303,12 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
                 (f, None) => tracing::warn!(?f, "fault ignored: no renderer"),
             },
             Some(ev) = bus_rx.recv() => tracing::warn!(?ev, "bus event (no supervisor yet)"),
+            Some(ev) = renderer_event(&mut output_events) => match ev {
+                noplayout_proto::Event::OutputStats(s) => tracing::debug!(?s, "output stats"),
+                // TODO(M1): the supervisor (task 8) acts on PaintStall (K2g) and SenderStuck
+                // (recycle the output process, K5/K6); M1 so far only logs them.
+                other => tracing::warn!(?other, "output event"),
+            },
             Some(ev) = renderer_event(&mut renderer_events) => match ev {
                 noplayout_proto::Event::Console { error: true, text } => {
                     tracing::warn!(target: "program_page", "console error: {text}");

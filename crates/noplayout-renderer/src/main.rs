@@ -283,6 +283,9 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                     cef.set_frame_rate(cfg.mode, a, rate);
                 }
             }
+            Ok(Wake::Down(Down::Activate { .. })) => {
+                eprintln!("noplayout-renderer: Activate is an output message; ignored");
+            }
             Ok(Wake::Down(Down::HangPage { ms })) => {
                 eprintln!("noplayout-renderer: hanging the program page for {ms} ms (fault K3)");
                 cef.run_script(&hang_script(ms));
