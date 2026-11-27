@@ -184,10 +184,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
 
     tokio::select! {
         _ = stop.notified() => tracing::info!("stopping: API request"),
-        r = tokio::signal::ctrl_c() => match r {
-            Ok(()) => tracing::info!("stopping: interrupt"),
-            Err(e) => tracing::error!("cannot listen for Ctrl+C: {e}"),
-        },
+        signal = terminate_signal() => tracing::info!("stopping: {signal}"),
     }
 
     for child in [renderer, output].into_iter().flatten() {
@@ -204,6 +201,36 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     }
     tracing::info!("engine stopped");
     Ok(ExitCode::SUCCESS)
+}
+
+/// Resolves on Ctrl+C, and on Unix also on SIGTERM (what launchd and systemd send). If a
+/// handler can't be installed, that source never fires instead of stopping the engine at once.
+async fn terminate_signal() -> &'static str {
+    let interrupt = async {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => "interrupt",
+            Err(e) => {
+                tracing::error!("cannot listen for Ctrl+C: {e}");
+                std::future::pending().await
+            }
+        }
+    };
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => tokio::select! {
+                s = interrupt => s,
+                _ = term.recv() => "SIGTERM",
+            },
+            Err(e) => {
+                tracing::error!("cannot listen for SIGTERM: {e}");
+                interrupt.await
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    interrupt.await
 }
 
 #[cfg(test)]
