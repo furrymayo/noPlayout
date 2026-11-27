@@ -1,3 +1,6 @@
+# Text files are LF in the repo and in every checkout, Windows included (tests compare text).
+* text=auto eol=lf
+
 # Fixtures are byte-identical copies of supplied material or generated vectors: no line-ending
-# conversion, no diffs as text merges (D-014, D-013).
+# conversion, no diffs as text merges (D-014, D-013). Later lines win, so this overrides the above.
 fixtures/** -text

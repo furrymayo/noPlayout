@@ -490,7 +490,9 @@ mod tests {
         let manifest = std::fs::read_to_string(root().join("Cargo.toml")).unwrap();
         let pin = format!("cef = {{ version = \"={semver}\" }}");
         assert!(manifest.contains(&pin), "Cargo.toml must pin {pin}");
-        let lock = std::fs::read_to_string(root().join("Cargo.lock")).unwrap();
+        let lock = std::fs::read_to_string(root().join("Cargo.lock"))
+            .unwrap()
+            .replace("\r\n", "\n");
         for krate in ["cef", "cef-dll-sys"] {
             let entry = format!("name = \"{krate}\"\nversion = \"{CEF_CRATE_VERSION}\"");
             assert!(
