@@ -58,6 +58,9 @@ fn host_target() -> &'static str {
         "x86_64-pc-windows-msvc"
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "x86_64-unknown-linux-gnu"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        // Not a product target (PLAN §8.1); kept so ARM Linux containers can run the dev tasks.
+        "aarch64-unknown-linux-gnu"
     } else {
         "unsupported"
     }
@@ -70,6 +73,7 @@ fn cef_os_arch(target: &str) -> Result<&'static str> {
         "x86_64-apple-darwin" => "cef_macos_x86_64",
         "x86_64-pc-windows-msvc" => "cef_windows_x86_64",
         "x86_64-unknown-linux-gnu" => "cef_linux_x86_64",
+        "aarch64-unknown-linux-gnu" => "cef_linux_aarch64",
         other => bail!("no CEF build for target {other}"),
     })
 }
@@ -211,11 +215,50 @@ fn bundle_platform(dir: &Path) -> Result<PathBuf> {
 
 #[cfg(not(target_os = "macos"))]
 fn bundle_platform(dir: &Path) -> Result<PathBuf> {
-    // On Windows and Linux cef-dll-sys copies the CEF runtime next to the binaries itself.
+    // CEF has to sit next to the renderer on Windows and Linux (the Linux renderer carries
+    // RUNPATH $ORIGIN). cef-dll-sys tries to copy it there, but it finds the target directory by
+    // walking up from OUT_DIR, which lands in `<profile>/build/` with this Cargo's build-dir
+    // layout; so place the runtime ourselves.
+    copy_cef_runtime(&cef_dir()?, dir)?;
     Ok(dir.join(format!(
         "noplayout-renderer{}",
         std::env::consts::EXE_SUFFIX
     )))
+}
+
+/// Copy the CEF runtime (top-level files and `locales/`) from `cef` into `dest`, skipping files
+/// that are already there with the same size.
+#[cfg(not(target_os = "macos"))]
+fn copy_cef_runtime(cef: &Path, dest: &Path) -> Result<()> {
+    fn copy_files(src: &Path, dest: &Path) -> Result<usize> {
+        std::fs::create_dir_all(dest)?;
+        let mut copied = 0;
+        for entry in std::fs::read_dir(src).with_context(|| format!("reading {}", src.display()))? {
+            let entry = entry?;
+            let meta = entry.metadata()?;
+            if !meta.is_file() {
+                continue;
+            }
+            let to = dest.join(entry.file_name());
+            if std::fs::metadata(&to).is_ok_and(|m| m.len() == meta.len()) {
+                continue;
+            }
+            std::fs::copy(entry.path(), &to).with_context(|| {
+                format!("copying {} to {}", entry.path().display(), to.display())
+            })?;
+            copied += 1;
+        }
+        Ok(copied)
+    }
+    if !cef.join("archive.json").exists() {
+        bail!("no CEF at {}; run `cargo xtask cef`", cef.display());
+    }
+    let n = copy_files(cef, dest)? + copy_files(&cef.join("locales"), &dest.join("locales"))?;
+    eprintln!(
+        "xtask: CEF runtime next to the renderer in {} ({n} files copied)",
+        dest.display()
+    );
+    Ok(())
 }
 
 fn build_headless(release: bool) -> Result<PathBuf> {

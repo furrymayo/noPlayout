@@ -11,7 +11,8 @@ the EBU [OGraf](https://ograf.ebu.io/) v1 standard. Graphics render in an offscr
 
 Prerequisites: Rust via rustup (the pinned toolchain in `rust-toolchain.toml` installs itself),
 Node.js 24+, Git. Linux also needs the Tauri v2 system packages
-(`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev`).
+(`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev libssl-dev libudev-dev`)
+and Chromium's usual runtime libraries (nss, atk, cups, gbm, xkbcommon, alsa; any desktop install has them).
 Windows needs the MSVC build tools and WebView2 (preinstalled on Windows 11).
 
 ```sh
