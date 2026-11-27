@@ -26,6 +26,8 @@ const PAGE_QUEUE: usize = 4096;
 const TIME_SYNC: Duration = Duration::from_secs(5);
 /// A page must send `Register` this soon after connecting.
 const REGISTER_TIMEOUT: Duration = Duration::from_secs(5);
+/// How often the actor checks per-action deadlines (state.rs `DEADLINE_*`).
+const DEADLINE_TICK: Duration = Duration::from_millis(250);
 
 /// Events for the engine's supervisor (renderer kills, injected faults).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +234,8 @@ impl Actor {
     async fn run(mut self, mut rx: mpsc::Receiver<Msg>) {
         let mut sync = tokio::time::interval(TIME_SYNC);
         sync.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let mut deadlines = tokio::time::interval(DEADLINE_TICK);
+        deadlines.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tokio::select! {
                 msg = rx.recv() => match msg {
@@ -239,6 +243,10 @@ impl Actor {
                     None => break,
                 },
                 _ = sync.tick() => { let out = self.state.time_sync(); self.apply(out); }
+                _ = deadlines.tick() => {
+                    let out = self.state.expire(std::time::Instant::now());
+                    self.apply(out);
+                }
             }
         }
     }
@@ -265,8 +273,11 @@ impl Actor {
             } => match self.state.register(conn, loopback, &reg) {
                 Ok(snapshot) => {
                     self.pages.insert(conn, tx);
-                    // Snapshot at S and subscription from S + 1 happen in this one step.
+                    // Snapshot at S and subscription from S + 1 happen in this one step; a
+                    // late authoritative page then gets its backlog live (§2.14, ADR 0062).
                     self.send(conn, &HostDown::Snapshot(Box::new(snapshot)));
+                    let out = self.state.flush_backlog(conn);
+                    self.apply(out);
                     let _ = reply.send(true);
                 }
                 Err((code, why)) => {

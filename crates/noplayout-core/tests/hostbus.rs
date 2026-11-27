@@ -222,3 +222,101 @@ async fn registration_snapshot_live_actions_and_ctl_results() {
     stop.notify_one();
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_before_the_program_page_registers_get_results() {
+    let bus = HostBus::start(&["1"], TimeSource::new(), None, None);
+    let listener = http::bind(0).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let stop = Arc::new(Notify::new());
+    let state = Arc::new(ApiState {
+        health: HealthState::new(),
+        library: None,
+        ui_token: Some("ui-token".into()),
+        shutdown: stop.clone(),
+        hostbus: Some(bus.clone()),
+        host_dir: None,
+        faults: None,
+    });
+    let server = tokio::spawn(http::serve(listener, state, stop.clone()));
+    let ch = bus.channel("1").unwrap();
+    // The supervisor activates a renderer as it launches, before its page has loaded.
+    let inc = ch.new_incarnation("launch-token".into()).await.unwrap();
+    ch.promote(inc).await;
+    let cmd = |command| {
+        ctl(
+            port,
+            Ctl::Command {
+                channel: "1".into(),
+                command,
+            },
+        )
+    };
+    let load = cmd(Command::Load {
+        layer: 10,
+        graphic_url: "/library/h/g.ograf.json".into(),
+        data: Some(json!({"name": "A"})),
+        cued: false,
+    });
+    while ch.inspect().await.unwrap().last_seq < 1 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let play = cmd(Command::Play {
+        target: noplayout_core::hostbus::state::Target::Layer(10),
+        delta: None,
+        goto: None,
+        skip_animation: false,
+    });
+    while ch.inspect().await.unwrap().last_seq < 2 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let mut page = open(
+        port,
+        json!({"type": "Register", "channel": "1", "role": "program", "hostVersion": "0.0.1",
+               "inc": inc, "token": "launch-token"}),
+    )
+    .await;
+    let snap = next_json(&mut page).await;
+    assert_eq!(
+        (snap["type"].as_str(), snap["lastSeq"].as_u64()),
+        (Some("Snapshot"), Some(0))
+    );
+    for (seq, method, step) in [(1, "load", None), (2, "playAction", Some(0))] {
+        let a = next_json(&mut page).await;
+        assert_eq!(
+            (a["seq"].as_u64(), a["method"].as_str()),
+            (Some(seq), Some(method))
+        );
+        let mut r = json!({"type": "Result", "seq": seq, "instanceId": a["instanceId"],
+                           "generation": a["generation"], "statusCode": 200});
+        if let Some(s) = step {
+            r["currentStep"] = json!(s);
+        }
+        page.send(Message::Text(r.to_string().into()))
+            .await
+            .unwrap();
+    }
+    assert_eq!(load.await.unwrap()["result"]["statusCode"], 200);
+    let played = play.await.unwrap();
+    assert_eq!(played["result"]["statusCode"], 200);
+    assert_eq!(played["result"]["currentStep"], 0);
+    // The engine's mirror of the page matches what the page reported.
+    let view = ch.inspect().await.unwrap();
+    let i = &view.instances[0];
+    assert_eq!(
+        (i.phase, i.current_step, i.pending),
+        (noplayout_core::hostbus::state::Phase::Loaded, Some(0), 0)
+    );
+    // A late mirror sees the same channel.
+    let mut mirror = open(
+        port,
+        json!({"type": "Register", "channel": "1", "role": "web-fill", "hostVersion": "0.0.1"}),
+    )
+    .await;
+    let snap = next_json(&mut mirror).await;
+    assert_eq!(snap["lastSeq"], 2);
+    assert_eq!(snap["layers"][0]["journal"][0]["method"], "playAction");
+
+    stop.notify_one();
+    let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
+}

@@ -216,11 +216,13 @@ fn promotion_takes_held_standby_results_for_pending_seqs() {
     // The active dies before answering; the standby already executed it.
     s.page(2, result(&d, p, Some(0)));
     assert_eq!(s.instances()[0].pending, 1, "standby results never commit");
-    s.remove_incarnation(a);
+    // The supervisor's warm order: promote the standby, then retire the failed active.
     let out = s.promote(b);
+    s.remove_incarnation(a);
     assert_eq!(s.barrier(), p);
     assert_eq!(out.results.len(), 1);
     assert_eq!(s.instances()[0].current_step, Some(0));
+    assert_eq!(s.counters.dropped_results, 0);
     // A late answer from the superseded incarnation's connection is ignored.
     assert!(s.page(1, result(&d, p, Some(5))).results.is_empty());
 }
@@ -454,4 +456,197 @@ fn token_compare_is_exact() {
     assert!(token_eq("abc", "abc"));
     assert!(!token_eq("abc", "abd"));
     assert!(!token_eq("abc", "abcd"));
+}
+
+fn lost_seqs(out: &Out) -> Vec<u64> {
+    out.results
+        .iter()
+        .filter(|r| {
+            r.status_code == LOST_STATUS && r.status_message.as_deref() == Some(LOST_MESSAGE)
+        })
+        .map(|r| r.seq)
+        .collect()
+}
+
+#[test]
+fn cold_path_with_an_action_in_flight_commits_504_in_seq_order() {
+    let mut s = ch();
+    let a = active(&mut s, 1);
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    let p1 = play(&mut s, 10);
+    let p2 = play(&mut s, 10);
+    // p2 answered, p1 still in flight when the renderer dies with no standby.
+    s.page(1, result(&d, p2, Some(1)));
+    let out = s.remove_incarnation(a);
+    assert_eq!(lost_seqs(&out), vec![p1]);
+    assert!(
+        out.log
+            .iter()
+            .any(|r| matches!(r, OnAirRecord::Result { result, .. } if result.seq == p1)),
+        "the 504 is journalled"
+    );
+    let v = &s.instances()[0];
+    assert_eq!(
+        (v.pending, v.current_step),
+        (0, Some(1)),
+        "p2 commits behind p1"
+    );
+    // The cold replacement replays p1 and p2; its 200 for p1 is no divergence from a 504 the
+    // engine made up, and nothing commits twice.
+    let b = s.new_incarnation("tb".into());
+    s.promote(b);
+    let snap = s
+        .register(2, true, &reg(Role::Program, Some(b), Some("tb")))
+        .unwrap();
+    assert_eq!(snap.last_seq, p2);
+    assert!(s.flush_backlog(2).sends.is_empty());
+    assert!(s.page(2, replayed(&d, p1, 200)).results.is_empty());
+    s.page(2, replayed(&d, p2, 200));
+    assert_eq!(s.counters.replay_divergence, 0);
+    let p3 = play(&mut s, 10);
+    assert_eq!(s.page(2, result(&d, p3, Some(0))).results.len(), 1);
+    assert_eq!(s.instances()[0].current_step, Some(0));
+}
+
+#[test]
+fn a_page_that_never_answers_resolves_at_its_deadline() {
+    let mut s = ch();
+    active(&mut s, 1);
+    let t0 = std::time::Instant::now();
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    let p1 = play(&mut s, 10);
+    let p2 = play(&mut s, 10);
+    s.page(1, result(&d, p2, Some(1)));
+    let slow = load(&mut s, 20);
+    assert!(
+        lost_seqs(&s.expire(t0 + DEADLINE_ACTION - std::time::Duration::from_millis(500)))
+            .is_empty()
+    );
+    let out = s.expire(t0 + DEADLINE_ACTION + std::time::Duration::from_millis(500));
+    assert_eq!(lost_seqs(&out), vec![p1], "a load waits 12 s");
+    let v = s.instances();
+    let on10 = v.iter().find(|i| i.layer == 10).unwrap();
+    assert_eq!((on10.pending, on10.current_step), (0, Some(1)));
+    let out = s.expire(t0 + DEADLINE_LOAD + std::time::Duration::from_millis(500));
+    assert_eq!(lost_seqs(&out), vec![slow.seq]);
+    assert_eq!(
+        s.instances().iter().find(|i| i.layer == 20).unwrap().phase,
+        Phase::LoadFailed
+    );
+    // A real result after the deadline is late: counted as dropped, never re-committed.
+    assert!(s.page(1, result(&d, p1, Some(0))).results.is_empty());
+    assert_eq!(s.counters.dropped_results, 1);
+}
+
+#[test]
+fn commands_before_the_active_page_registers_are_delivered_live() {
+    let mut s = ch();
+    let inc = s.new_incarnation("tok".into());
+    // The supervisor makes the incarnation active as soon as it launches, before its page loads.
+    s.promote(inc);
+    let d = load(&mut s, 10);
+    let p = play(&mut s, 10);
+    let snap = s
+        .register(1, true, &reg(Role::Program, Some(inc), Some("tok")))
+        .unwrap();
+    assert_eq!((snap.last_seq, snap.layers.len()), (0, 0));
+    let out = s.flush_backlog(1);
+    let seqs: Vec<_> = out
+        .sends
+        .iter()
+        .map(|(c, m)| match m {
+            HostDown::Action(a) => (*c, a.seq, a.method),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        seqs,
+        vec![(1, d.seq, Method::Load), (1, p, Method::PlayAction)]
+    );
+    // Live, so their results commit.
+    assert_eq!(s.page(1, result(&d, d.seq, None)).results.len(), 1);
+    assert_eq!(s.page(1, result(&d, p, Some(0))).results.len(), 1);
+    let v = &s.instances()[0];
+    assert_eq!(
+        (v.phase, v.current_step, v.pending),
+        (Phase::Loaded, Some(0), 0)
+    );
+    assert!(
+        s.flush_backlog(1).sends.is_empty(),
+        "the backlog is sent once"
+    );
+}
+
+#[test]
+fn a_late_active_page_snapshots_at_live_from_and_gets_the_rest_live() {
+    let mut s = ch();
+    let a = active(&mut s, 1);
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    let p = play(&mut s, 10);
+    s.page(1, result(&d, p, Some(0)));
+    // Cold path: the renderer is replaced; a command lands before the new page registers.
+    s.remove_incarnation(a);
+    let b = s.new_incarnation("tb".into());
+    s.promote(b);
+    let u = s
+        .dispatch(Command::Update {
+            target: Target::Layer(10),
+            data: json!({"name": "B"}),
+            skip_animation: false,
+        })
+        .unwrap()
+        .0;
+    let snap = s
+        .register(2, true, &reg(Role::Program, Some(b), Some("tb")))
+        .unwrap();
+    assert_eq!(snap.last_seq, p);
+    assert_eq!(
+        snap.layers[0]
+            .journal
+            .iter()
+            .map(|e| e.seq)
+            .collect::<Vec<_>>(),
+        vec![p],
+        "the snapshot stops at live_from - 1"
+    );
+    let out = s.flush_backlog(2);
+    assert_eq!(out.sends.len(), 1);
+    // The replayed play does not commit; the live update does.
+    assert!(s.page(2, replayed(&d, p, 200)).results.is_empty());
+    assert_eq!(s.page(2, result(&d, u.seq, None)).results.len(), 1);
+    assert_eq!(s.instances()[0].pending, 0);
+    // A mirror registering now gets the full channel.
+    let m = s
+        .register(3, false, &reg(Role::WebFill, None, None))
+        .unwrap();
+    assert_eq!(m.last_seq, u.seq);
+}
+
+#[test]
+fn standby_held_results_are_pruned_as_the_active_commits() {
+    let mut s = ch();
+    active(&mut s, 1);
+    let b = s.new_incarnation("tb".into());
+    s.register(2, true, &reg(Role::Program, Some(b), Some("tb")))
+        .unwrap();
+    let d = load(&mut s, 10);
+    s.page(2, result(&d, d.seq, None));
+    s.page(1, result(&d, d.seq, None));
+    let held = |s: &ChannelState| s.pages().iter().map(|p| p.held).max().unwrap();
+    let mut max = 0;
+    // The standby is always faster than the active.
+    for n in 0..10_000 {
+        let p = play(&mut s, 10);
+        s.page(2, result(&d, p, Some(n % 3)));
+        max = max.max(held(&s));
+        s.page(1, result(&d, p, Some(n % 3)));
+    }
+    assert_eq!(max, 1, "held never grows past the seqs still in flight");
+    assert_eq!(held(&s), 0);
+    s.promote(b);
+    assert_eq!(s.counters.dropped_results, 0);
+    assert_eq!(s.counters.mirror_divergence, 0);
 }

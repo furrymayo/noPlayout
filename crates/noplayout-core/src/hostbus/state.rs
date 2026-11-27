@@ -145,6 +145,21 @@ struct Incarnation {
     program_conn: Option<ConnId>,
 }
 
+/// Engine-side deadline for one action sent to the authoritative page (§2.14): the page's own
+/// timeout (load 10 s, other methods 5 s) plus 2 s.
+#[derive(Debug, Clone)]
+struct Deadline {
+    at: std::time::Instant,
+    instance_id: String,
+    generation: u64,
+}
+
+pub const DEADLINE_LOAD: std::time::Duration = std::time::Duration::from_secs(12);
+pub const DEADLINE_ACTION: std::time::Duration = std::time::Duration::from_secs(7);
+/// Status of an action the authoritative renderer will never answer live (ADR 0062).
+pub const LOST_STATUS: u16 = 504;
+pub const LOST_MESSAGE: &str = "renderer lost before result";
+
 /// Side effects the actor performs after a state step.
 #[derive(Debug, Default)]
 pub struct Out {
@@ -240,6 +255,11 @@ pub struct ChannelState {
     max_inc: u64,
     active_inc: Option<u64>,
     barrier: u64,
+    /// The active incarnation has no registered program page: seqs from here on are held in
+    /// `backlog` and delivered to that page live, after its snapshot at `live_from − 1` (§2.14).
+    live_from: Option<u64>,
+    backlog: Vec<Action>,
+    deadlines: BTreeMap<u64, Deadline>,
     pub counters: Counters,
 }
 
@@ -272,6 +292,9 @@ impl ChannelState {
             max_inc: 0,
             active_inc: None,
             barrier: 0,
+            live_from: None,
+            backlog: Vec::new(),
+            deadlines: BTreeMap::new(),
             counters: Counters::default(),
         }
     }
@@ -332,12 +355,16 @@ impl ChannelState {
         self.max_inc
     }
 
-    /// The renderer process is gone or replaced: its pages are superseded.
+    /// The renderer process is gone or replaced: its pages are superseded. If it was the
+    /// authoritative one, every pending seq it will never answer commits as a 504 (ADR 0062).
     pub fn remove_incarnation(&mut self, inc: u64) -> Out {
         let mut out = Out::default();
         self.incarnations.remove(&inc);
         if self.active_inc == Some(inc) {
             self.active_inc = None;
+            self.live_from = None;
+            self.backlog.clear();
+            self.lose(|_| true, &mut out);
         }
         let gone: Vec<ConnId> = self
             .conns
@@ -354,7 +381,8 @@ impl ChannelState {
     }
 
     /// Make `inc` the authoritative renderer. Records barrier `B` = last dispatched seq and
-    /// takes the new active's results for still-pending `seq ≤ B` (§2.14).
+    /// takes the new active's results for still-pending `seq ≤ B` (§2.14). Pending seqs the new
+    /// active only saw as replay (or not at all) can never commit from it: they commit as 504.
     pub fn promote(&mut self, inc: u64) -> Out {
         let mut out = Out::default();
         if !self.incarnations.contains_key(&inc) {
@@ -362,13 +390,100 @@ impl ChannelState {
         }
         self.active_inc = Some(inc);
         self.barrier = self.last_seq;
+        self.backlog.clear();
         let conn = self.incarnations.get(&inc).and_then(|i| i.program_conn);
-        if let Some(held) = conn
-            .and_then(|c| self.conns.get_mut(&c))
-            .map(|c| std::mem::take(&mut c.held))
-        {
-            for r in held.into_values() {
-                self.commit(r, &mut out);
+        let Some(conn) = conn else {
+            // No program page yet (first start, cold path): it gets a snapshot at `B` and every
+            // later seq live. Nothing pending before it can reach it live.
+            self.lose(|_| true, &mut out);
+            self.live_from = Some(self.last_seq + 1);
+            return out;
+        };
+        self.live_from = None;
+        let (held, upto) = self
+            .conns
+            .get_mut(&conn)
+            .map(|c| (std::mem::take(&mut c.held), c.replay_upto))
+            .unwrap_or_default();
+        for r in held.into_values() {
+            self.commit(r, false, &mut out);
+        }
+        self.lose(|seq| seq <= upto, &mut out);
+        let now = std::time::Instant::now();
+        for (seq, id, generation, method) in self.unanswered() {
+            self.arm(seq, id, generation, method, now);
+        }
+        out
+    }
+
+    /// Pending seqs with no result yet, in seq order: `(seq, instance, generation, method)`.
+    fn unanswered(&self) -> Vec<(u64, String, u64, Method)> {
+        let mut v: Vec<_> = self
+            .instances
+            .values()
+            .flat_map(|i| {
+                i.pending
+                    .iter()
+                    .filter(|(_, r)| r.is_none())
+                    .map(|(seq, _)| (*seq, i.id.clone(), i.generation, i.method_of(*seq)))
+            })
+            .collect();
+        v.sort_by_key(|e| e.0);
+        v
+    }
+
+    /// Commit a 504 "renderer lost before result" for every unanswered pending seq matching
+    /// `which`, in seq order (§2.14 commit order must not depend on a result that never comes).
+    fn lose(&mut self, which: impl Fn(u64) -> bool, out: &mut Out) {
+        for (seq, instance_id, generation, _) in self.unanswered() {
+            if which(seq) {
+                self.commit(lost(seq, instance_id, generation), true, out);
+            }
+        }
+    }
+
+    fn arm(
+        &mut self,
+        seq: u64,
+        instance_id: String,
+        generation: u64,
+        method: Method,
+        now: std::time::Instant,
+    ) {
+        let wait = if method == Method::Load {
+            DEADLINE_LOAD
+        } else {
+            DEADLINE_ACTION
+        };
+        self.deadlines.insert(
+            seq,
+            Deadline {
+                at: now + wait,
+                instance_id,
+                generation,
+            },
+        );
+    }
+
+    /// Commit a 504 for every action the authoritative page has not answered by its deadline.
+    pub fn expire(&mut self, now: std::time::Instant) -> Out {
+        let mut out = Out::default();
+        let due: Vec<(u64, Deadline)> = self
+            .deadlines
+            .iter()
+            .filter(|(_, d)| d.at <= now)
+            .map(|(s, d)| (*s, d.clone()))
+            .collect();
+        for (seq, d) in due {
+            self.deadlines.remove(&seq);
+            let unanswered = self
+                .instances
+                .get(&d.instance_id)
+                .filter(|i| i.generation == d.generation)
+                .is_some_and(|i| matches!(i.pending.get(&seq), Some(None)));
+            if unanswered {
+                tracing::warn!(seq, "no result from the authoritative page by its deadline");
+                self.commit(lost(seq, d.instance_id, d.generation), true, &mut out);
             }
         }
         out
@@ -426,7 +541,13 @@ impl ChannelState {
             }
             inc = Some(i);
         }
-        let snapshot = self.snapshot();
+        // The active renderer's program page registering late: snapshot at `live_from − 1`;
+        // every later seq follows live from the backlog ([`Self::flush_backlog`]).
+        let cut = match (inc, self.live_from) {
+            (Some(i), Some(lf)) if self.active_inc == Some(i) => lf - 1,
+            _ => self.last_seq,
+        };
+        let snapshot = self.snapshot_upto(cut);
         self.conns.insert(
             conn,
             Conn {
@@ -442,12 +563,41 @@ impl ChannelState {
         Ok(snapshot)
     }
 
+    /// Right after the authoritative page's registration (same actor step): send it every seq
+    /// from `live_from` on as a live `Action`, in seq order, and start their deadlines.
+    pub fn flush_backlog(&mut self, conn: ConnId) -> Out {
+        let mut out = Out::default();
+        if self.live_from.is_none() || self.authoritative_conn() != Some(conn) {
+            return out;
+        }
+        self.live_from = None;
+        let now = std::time::Instant::now();
+        for a in std::mem::take(&mut self.backlog) {
+            let pending = self
+                .instances
+                .get(&a.instance_id)
+                .filter(|i| i.generation == a.generation)
+                .is_some_and(|i| i.pending.contains_key(&a.seq));
+            if pending {
+                self.arm(a.seq, a.instance_id.clone(), a.generation, a.method, now);
+            }
+            out.sends.push((conn, HostDown::Action(a)));
+        }
+        out
+    }
+
     /// A refused superseded program page: the engine kills that process if it is alive.
     pub fn superseded_kill(&self, reg: &Register) -> Option<u64> {
         (reg.role == Role::Program).then_some(reg.inc).flatten()
     }
 
     pub fn unregister(&mut self, conn: ConnId) {
+        if self.authoritative_conn() == Some(conn) && self.live_from.is_none() {
+            // The active page went away but its renderer lives: a re-registration gets the
+            // snapshot up to here and everything after live. Seqs it had live and never
+            // answered resolve by their deadlines.
+            self.live_from = Some(self.last_seq + 1);
+        }
         if let Some(c) = self.conns.remove(&conn)
             && let Some(n) = c.inc.and_then(|i| self.incarnations.get_mut(&i))
             && n.program_conn == Some(conn)
@@ -457,6 +607,11 @@ impl ChannelState {
     }
 
     pub fn snapshot(&self) -> Snapshot {
+        self.snapshot_upto(self.last_seq)
+    }
+
+    /// The channel as of `cut`: instances loaded at or before it and journal entries up to it.
+    fn snapshot_upto(&self, cut: u64) -> Snapshot {
         let layer = |i: &Inst| {
             let frontier = i.checkpoint.as_ref().map_or(0, |c| c.frontier_seq);
             SnapshotLayer {
@@ -470,7 +625,7 @@ impl ChannelState {
                 journal: i
                     .journal
                     .iter()
-                    .filter(|e| e.entry.seq > frontier)
+                    .filter(|e| e.entry.seq > frontier && e.entry.seq <= cut)
                     .map(|e| JournalEntry {
                         replay: Some(true),
                         ..e.entry.clone()
@@ -479,19 +634,26 @@ impl ChannelState {
                 checkpoint: i.checkpoint.clone(),
             }
         };
+        let upto = |i: &&Inst| i.load_seq <= cut;
         let mut layers: Vec<_> = self
             .instances
             .values()
+            .filter(upto)
             .filter(|i| !i.cued)
             .map(layer)
             .collect();
         layers.sort_by_key(|l| l.layer);
         Snapshot {
             revision: self.revision,
-            last_seq: self.last_seq,
+            last_seq: cut,
             server_now: self.time.now(),
             layers,
-            cued: self.instances.values().find(|i| i.cued).map(layer),
+            cued: self
+                .instances
+                .values()
+                .filter(upto)
+                .find(|i| i.cued)
+                .map(layer),
             flags: vec![],
         }
     }
@@ -530,6 +692,13 @@ impl ChannelState {
 
     fn drop_instance(&mut self, id: &str, out: &mut Out) {
         if let Some(i) = self.instances.remove(id) {
+            // Its pending seqs can never commit: forget their deadlines and held copies.
+            for seq in i.pending.keys() {
+                self.deadlines.remove(seq);
+                for c in self.conns.values_mut() {
+                    c.held.remove(seq);
+                }
+            }
             out.log.push(OnAirRecord::Dispose {
                 channel: self.channel.clone(),
                 instance_id: i.id,
@@ -736,6 +905,20 @@ impl ChannelState {
         });
         out.sends
             .extend(self.conns.keys().map(|c| (*c, action.clone())));
+        if self.live_from.is_some()
+            && let HostDown::Action(a) = &action
+        {
+            // The active renderer's program page has not registered yet: deliver it live then.
+            self.backlog.push(a.clone());
+        } else if self.authoritative_conn().is_some() {
+            self.arm(
+                seq,
+                id.clone(),
+                generation,
+                method,
+                std::time::Instant::now(),
+            );
+        }
         if method == Method::Dispose {
             self.drop_instance(&id, &mut out);
         }
@@ -834,7 +1017,7 @@ impl ChannelState {
                     // Replay results never commit; they are only compared (§2.14, §2.13.2).
                     self.compare_replay(&r);
                 } else if authoritative {
-                    self.commit(r, &mut out);
+                    self.commit(r, false, &mut out);
                 } else if role == Role::Program {
                     // Standby: keep results for pending seqs, for promotion; compare otherwise.
                     let pending = self
@@ -886,8 +1069,11 @@ impl ChannelState {
         }
     }
 
-    /// Record an authoritative result; update engine state only in seq order per instance.
-    fn commit(&mut self, r: PageResult, out: &mut Out) {
+    /// Record an authoritative (or engine-synthesised) result; update engine state only in seq
+    /// order per instance. A committed seq is pruned from every standby's `held` map.
+    fn commit(&mut self, r: PageResult, synthetic: bool, out: &mut Out) {
+        let seq = r.seq;
+        self.deadlines.remove(&seq);
         let Some(i) = self
             .instances
             .get_mut(&r.instance_id)
@@ -906,6 +1092,7 @@ impl ChannelState {
         }
         if let Some(e) = i.journal.iter_mut().find(|e| e.entry.seq == r.seq) {
             e.result = Some(r.clone());
+            e.synthetic = synthetic;
         }
         out.results.push(r.clone());
         out.log.push(OnAirRecord::Result {
@@ -918,14 +1105,7 @@ impl ChannelState {
             };
             let seq = *entry.key();
             entry.remove();
-            let method = if seq == i.load_seq {
-                Method::Load
-            } else {
-                i.journal
-                    .iter()
-                    .find(|e| e.entry.seq == seq)
-                    .map_or(Method::Dispose, |e| e.entry.method)
-            };
+            let method = i.method_of(seq);
             match method {
                 Method::Load => {
                     i.phase = if res.ok() {
@@ -946,6 +1126,10 @@ impl ChannelState {
                 _ => {}
             }
         }
+        // A4: the active committed `seq`; a standby's copy is no longer needed for promotion.
+        for c in self.conns.values_mut() {
+            c.held.remove(&seq);
+        }
     }
 
     /// Pages registered on this channel, with their last beat, for Health.
@@ -960,8 +1144,36 @@ impl ChannelState {
                 lag_ms: c.last_beat.map(|b| b.1),
                 last_applied_seq: c.last_beat.map(|b| b.2),
                 beat_age_ms: c.beat_at.elapsed().as_millis() as u64,
+                held: c.held.len(),
             })
             .collect()
+    }
+}
+
+impl Inst {
+    fn method_of(&self, seq: u64) -> Method {
+        if seq == self.load_seq {
+            Method::Load
+        } else {
+            self.journal
+                .iter()
+                .find(|e| e.entry.seq == seq)
+                .map_or(Method::Dispose, |e| e.entry.method)
+        }
+    }
+}
+
+/// The committed failure for an action the authoritative renderer will never answer live.
+fn lost(seq: u64, instance_id: String, generation: u64) -> PageResult {
+    PageResult {
+        seq,
+        instance_id,
+        generation,
+        status_code: LOST_STATUS,
+        status_message: Some(LOST_MESSAGE.into()),
+        current_step: None,
+        payload: None,
+        replay: false,
     }
 }
 
@@ -976,4 +1188,6 @@ pub struct PageView {
     pub last_applied_seq: Option<u64>,
     /// Milliseconds since this page last beat (or registered).
     pub beat_age_ms: u64,
+    /// A standby program page's results kept for promotion (pruned as the active commits).
+    pub held: usize,
 }
