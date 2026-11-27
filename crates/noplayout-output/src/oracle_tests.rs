@@ -29,10 +29,12 @@ struct Painter {
 struct Virtual {
     now: Mutex<u64>,
     painter: Mutex<Painter>,
-    lanes: OnceLock<Vec<Arc<Lane>>>,
+    lanes: OnceLock<Vec<(Plane, Arc<Lane>)>>,
     /// Only the Block injection leaves a lane in `submit`; otherwise always wait for the sinks
     /// (a slow runner's disk must not turn into a dropped slot).
-    block_injected: bool,
+    block: Option<Plane>,
+    /// The one `submit` (its `in_flight_since`) the Block injection holds; no other is exempt.
+    blocked_submit: Mutex<Option<u64>>,
 }
 
 impl pacer::Clock for Virtual {
@@ -47,12 +49,13 @@ impl pacer::Clock for Virtual {
             // slot then); only a hung sink should reach this.
             let until = Instant::now() + Duration::from_secs(20);
             while Instant::now() < until
-                && !lanes.iter().all(|l| {
+                && !lanes.iter().all(|(plane, l)| {
                     let since = l.in_flight_since.load(Ordering::Acquire);
                     l.is_idle()
-                        || (self.block_injected
+                        || (self.block == Some(*plane)
                             && since != 0
-                            && clock::mono_ns() - since > 100_000_000)
+                            && clock::mono_ns() - since > 100_000_000
+                            && *self.blocked_submit.lock().unwrap().get_or_insert(since) == since)
                 })
             {
                 std::thread::sleep(Duration::from_micros(200));
@@ -101,13 +104,14 @@ fn dump_run(
             frozen_s: 0,
         }),
         lanes: OnceLock::new(),
-        block_injected: matches!(
-            fault,
+        block: match fault {
             Some(Fault {
-                kind: Kind::Block(..),
+                kind: Kind::Block(p, _),
                 ..
-            })
-        ),
+            }) => Some(p),
+            _ => None,
+        },
+        blocked_submit: Mutex::new(None),
     });
     let crops = layout::crops(W, H);
     let sinks: Vec<(Plane, Box<dyn FrameSink>)> = [Plane::Fill, Plane::Key]
@@ -135,7 +139,7 @@ fn dump_run(
     .unwrap();
     let _ = virt
         .lanes
-        .set(p.lanes.iter().map(|(_, l)| l.clone()).collect());
+        .set(p.lanes.iter().map(|(pl, l)| (*pl, l.clone())).collect());
     *p.control.activate.lock().unwrap() = Some((ring.clone(), 3, DriveMode::A));
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
