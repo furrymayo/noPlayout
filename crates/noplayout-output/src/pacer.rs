@@ -30,6 +30,28 @@ pub struct Config {
     /// Stop after this many slots that carried a paint (`--frames N`).
     pub frames: Option<u64>,
     pub fault: Option<Fault>,
+    /// The pacer's time source: [`RealClock`] in the product; tests use a virtual one so the
+    /// dump-path fault tests do not depend on the host's timer.
+    pub clock: Arc<dyn Clock>,
+}
+
+/// What the pacer waits on.
+pub trait Clock: Send + Sync {
+    fn now(&self) -> u64;
+    /// Wait until `deadline` on [`Clock::now`]; returns the lateness in ns.
+    fn wait_until(&self, deadline: u64) -> u64;
+}
+
+/// The machine-wide monotonic clock with the precise wait (PLAN §5.1).
+pub struct RealClock;
+
+impl Clock for RealClock {
+    fn now(&self) -> u64 {
+        clock::mono_ns()
+    }
+    fn wait_until(&self, deadline: u64) -> u64 {
+        clock::wait_until(deadline)
+    }
 }
 
 /// What the control thread asks of the pacer.
@@ -169,14 +191,14 @@ fn run(
     let mut last_seq = 0u64;
     let mut hysteresis_until = 0u64;
     let mut sent = 0u64;
-    let mut k = clock::k_at_or_after(epoch, clock::mono_ns() + period, rate);
+    let mut k = clock::k_at_or_after(epoch, cfg.clock.now() + period, rate);
     while !control.stop.load(Ordering::Relaxed) {
         let tk = clock::t_k(epoch, k, rate);
-        let late = clock::wait_until(tk);
+        let late = cfg.clock.wait_until(tk);
         stats.late_max_ns.fetch_max(late, Ordering::Relaxed);
         if late > period / 2 {
             // Never burst: drop this slot and any others already past (§5.3).
-            let next = clock::k_at_or_after(epoch, clock::mono_ns(), rate).max(k + 1);
+            let next = clock::k_at_or_after(epoch, cfg.clock.now(), rate).max(k + 1);
             stats.slots_skipped.fetch_add(next - k, Ordering::Relaxed);
             k = next;
             continue;
@@ -191,7 +213,7 @@ fn run(
         {
             // The renderer creates its ring when it gets `Configure`, which may be after the
             // engine's `Activate` reaches us: retry for up to 2 s.
-            pending = Some((req, clock::mono_ns() + 2_000_000_000));
+            pending = Some((req, cfg.clock.now() + 2_000_000_000));
         }
         if let Some(((ring, inc, mode), until)) = pending.take() {
             match Reader::open(&ring) {
@@ -215,7 +237,7 @@ fn run(
                         probe_reported: probe,
                     });
                 }
-                Err(_) if clock::mono_ns() < until => {
+                Err(_) if cfg.clock.now() < until => {
                     pending = Some(((ring, inc, mode), until));
                 }
                 Err(e) => {
@@ -259,7 +281,7 @@ fn run(
             let (pseq, preq) = a.reader.probe();
             if pseq > a.probe_answered
                 && pseq > a.probe_reported
-                && clock::mono_ns().saturating_sub(preq) >= PROBE_STALL_NS
+                && cfg.clock.now().saturating_sub(preq) >= PROBE_STALL_NS
             {
                 a.probe_reported = pseq;
                 let _ = events.send(Event::PaintStall {

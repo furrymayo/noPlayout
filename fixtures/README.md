@@ -8,4 +8,8 @@
   (`cd fixtures/basketball-ograf-package && shasum -a 256 -c ../SHA256SUMS.basketball`).
 - `oes/`: the OES scoreboard corpus (D-013); see `oes/README.md`.
 
-M1 adds our own test graphics (alpha ramp, frame-oracle, recovery-probe, test pattern) and goldens.
+- `frame-oracle/`: the frame oracle (PLAN §5.5); geometry in `crates/noplayout-oracle/src/layout.rs`.
+- `recovery-probe/probe-static`, `probe-timed`: the recovery probes (PLAN §2.13.6); `probe-static`
+  must stay free of timers, rAF and time reads.
+
+M1 still adds the alpha-ramp and gradient/shape fixtures and goldens (task 10).

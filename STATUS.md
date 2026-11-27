@@ -68,8 +68,30 @@ runs go through the Terminal `.command` path (task 7) and bind on the M2 mini (D
 S2 conversion cost (Mac Studio, provisional): 1080p p50 1.5 ms / p95 2.1 ms, 2160p p50
 3.9 ms / p95 4.2 ms (`cargo test --release -p noplayout-output -- --ignored s2_convert`).
 
-Still pending: M1 tasks 6–10 (oracle,
-spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
+Task 6 (oracle + fixtures): `noplayout-oracle` decodes patches A/B, the alpha patch and the
+ramp from FILL/KEY planes, whole or cropped (`layout.rs` is the geometry and the reference
+encoder; `fixtures/frame-oracle/graphic.mjs` draws the same), and judges a run per §5.5: Δn
+classes, tears, key mismatch, unpaired KEY, FILL and KEY timecode steps, unreadable, source
+period (0.5 %), step check, lag band (A: P/4, B: 1.25·P̂_src) and the skip rule (B at
+fractional rates: ≤ ⌈N/1000⌉+1, each Δn = 2, ≥ 900 apart). Binary: `noplayout-oracle <dump>
+--mode A|B [--rate] [--warmup]`, `--print-crops WxH` for the dump crops; it drops the
+lead-in before the first readable frame. Unit tests: synthetic round trips (whole, cropped,
+a flipped cell → unreadable), the §5.5 model cases in exact integer arithmetic (A 59.94; B
+59.94 / 29.97 → 10 skips per 10,000; B 50 / 25 → 0; five phases each) and the two mutations
+(10-frame freeze: 10 step errors, 9 Δs ≤ 0, band 165.8 ms; repeat: band 32.3 ms). Dump path:
+`noplayout-output` tests run the real pacer, ring, lanes and `DumpSink` on a virtual clock
+with a synthetic oracle painter, then the oracle on the dump: clean passes the A row; each of
+the eight injections fails with its detector (8 = a `DumpSink` sender blocked 300 ms).
+`fixtures/recovery-probe/probe-static` (no timer, no rAF, no time read) and `probe-timed`
+(+ deciseconds since load) encode counter, data hash and step; `decode::read_probe` reads
+them. `scripts/dev-oracle-run.sh A|B [frames]` runs the frame oracle through the real CEF
+renderer and the oracle; on the Mac Studio gateway shell it decodes every frame (0
+unreadable, tears, key mismatches, ramp errors) while the timing rows fail on the degraded
+timer (not evidence). `scripts/dev-check-fixtures.sh` imports and loads all three fixtures.
+Gap: the 3 s stuck-sink case recycling the output process needs the supervisor (task 8,
+`TODO(M1)`); the output already raises `SenderStuck` at 2 s.
+
+Still pending: M1 tasks 7–10 (spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
 
@@ -160,7 +182,7 @@ Linux needs the Tauri v2 packages listed in README.md; Windows needs the MSVC bu
 
 ## Skeleton crates
 
-`noplayout-pixels` (M1/M2), `noplayout-oracle` (M1),
+`noplayout-pixels` (M1/M2),
 `noplayout-ndi` (M2), `noplayout-datasource` + `noplayout-capture` (M4.5),
 `noplayout-decoder-oes` (M4.5; must pass `fixtures/oes/` byte for byte).
 

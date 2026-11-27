@@ -188,6 +188,7 @@ fn run() -> Result<ExitCode, String> {
             u0_100ns: ep.utc_100ns,
             frames: opts.frames,
             fault,
+            clock: Arc::new(pacer::RealClock),
         },
         sinks,
         ev_tx,
@@ -237,5 +238,7 @@ fn run() -> Result<ExitCode, String> {
     Ok(code)
 }
 
+#[cfg(test)]
+mod oracle_tests;
 #[cfg(test)]
 mod tests;

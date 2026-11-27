@@ -2739,6 +2739,10 @@ version = "0.0.1"
 [[package]]
 name = "noplayout-oracle"
 version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "noplayout-output"
@@ -2746,6 +2750,7 @@ version = "0.0.1"
 dependencies = [
  "interprocess",
  "noplayout-frames",
+ "noplayout-oracle",
  "noplayout-proto",
 ]
 

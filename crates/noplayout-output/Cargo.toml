@@ -19,3 +19,6 @@ workspace = true
 [features]
 # Output-side fault injection for the oracle tests (PLAN 5.5); never in a release build.
 fault-inject = []
+
+[dev-dependencies]
+noplayout-oracle.workspace = true

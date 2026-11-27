@@ -306,7 +306,8 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
             Some(ev) = renderer_event(&mut output_events) => match ev {
                 noplayout_proto::Event::OutputStats(s) => tracing::debug!(?s, "output stats"),
                 // TODO(M1): the supervisor (task 8) acts on PaintStall (K2g) and SenderStuck
-                // (recycle the output process, K5/K6); M1 so far only logs them.
+                // (recycle the output process, K5/K6; incl. the 3 s stuck-sink case of task 6).
+                // M1 so far only logs them.
                 other => tracing::warn!(?other, "output event"),
             },
             Some(ev) = renderer_event(&mut renderer_events) => match ev {

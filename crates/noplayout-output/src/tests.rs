@@ -103,6 +103,7 @@ fn run_pacer(fault: Option<Fault>, frames: u64) -> (Vec<Row>, Vec<Event>) {
             u0_100ns: 1_000,
             frames: Some(frames),
             fault,
+            clock: Arc::new(pacer::RealClock),
         },
         vec![
             (Plane::Fill, Box::new(NullSink) as Box<dyn FrameSink>),
@@ -200,7 +201,7 @@ fn fault_repeat_and_key_prev_and_tc_bump() {
 fn blocked_sender_is_slow_not_the_clock() {
     let (v, events) = run_pacer(
         Some(Fault {
-            kind: Kind::Block(Plane::Key, 300),
+            kind: Kind::Block(Plane::Key, 600),
             at: 5,
         }),
         40,

@@ -1,0 +1,15 @@
+{
+    "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+    "name": "noPlayout frame oracle",
+    "description": "Test fixture (PLAN 5.5): encodes a per-rAF counter n and the rAF time s (µs) in opaque patches A (top-left) and B (bottom-right), n in an alpha-only patch, a 16-step alpha ramp and a moving box. Decoded by noplayout-oracle; geometry in crates/noplayout-oracle/src/layout.rs.",
+    "id": "noplayout-frame-oracle",
+    "version": "1",
+    "main": "graphic.mjs",
+    "supportsRealTime": true,
+    "supportsNonRealTime": false,
+    "stepCount": 1,
+    "schema": {
+        "type": "object",
+        "properties": {}
+    }
+}

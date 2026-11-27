@@ -170,6 +170,13 @@ impl Lane {
         self.cv.notify_one();
     }
 
+    /// Nothing queued and nothing in `submit` (tests pace a virtual clock on it).
+    #[cfg(test)]
+    pub fn is_idle(&self) -> bool {
+        let q = self.queue.lock().unwrap_or_else(|p| p.into_inner());
+        q.next.is_none() && self.in_flight_since.load(Ordering::Acquire) == 0
+    }
+
     pub fn stop(&self) {
         let mut q = self.queue.lock().unwrap_or_else(|p| p.into_inner());
         q.stop = true;
