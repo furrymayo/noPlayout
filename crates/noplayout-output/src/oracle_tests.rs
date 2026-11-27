@@ -40,7 +40,9 @@ impl pacer::Clock for Virtual {
         // Let the sinks finish the previous slot; a lane in `submit` for 100 ms is the one
         // injection 8 blocks, and is left alone.
         if let Some(lanes) = self.lanes.get() {
-            let until = Instant::now() + Duration::from_millis(1000);
+            // Generous: a hosted runner's disk can hold a DumpSink past 1 s (a real dropped
+            // slot then); only a hung sink should reach this.
+            let until = Instant::now() + Duration::from_secs(20);
             while Instant::now() < until
                 && !lanes.iter().all(|l| {
                     let since = l.in_flight_since.load(Ordering::Acquire);

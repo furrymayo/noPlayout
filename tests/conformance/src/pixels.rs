@@ -81,7 +81,13 @@ pub fn capture(bin: &Path, host: &Path, work: &Path, c: &Case) -> Result<Capture
     };
     while lines("fill") < c.frames || lines("key") < c.frames {
         if t0.elapsed() > Duration::from_secs(30) {
-            return Err(format!("{}: dump incomplete after 30 s", c.name));
+            return Err(format!(
+                "{}: dump incomplete after 30 s ({} fill, {} key lines); {}",
+                c.name,
+                lines("fill"),
+                lines("key"),
+                e.diagnose()
+            ));
         }
         std::thread::sleep(Duration::from_millis(100));
     }

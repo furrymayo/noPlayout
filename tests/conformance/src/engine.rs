@@ -111,6 +111,22 @@ impl Engine {
         std::fs::metadata(&self.log).map(|m| m.len()).unwrap_or(0)
     }
 
+    /// For a failure message: the supervisor's records and the engine's last WARN/ERROR lines.
+    pub fn diagnose(&self) -> String {
+        let sup = self
+            .supervisor()
+            .map(|v| v["records"].to_string())
+            .unwrap_or_else(|e| e);
+        let text = std::fs::read(&self.log).unwrap_or_default();
+        let text = String::from_utf8_lossy(&text);
+        let warn: Vec<&str> = text
+            .lines()
+            .filter(|l| (l.contains(" WARN ") || l.contains(" ERROR ")) && !l.contains("console"))
+            .collect();
+        let tail = warn[warn.len().saturating_sub(12)..].join("\n         ");
+        format!("supervisor records {sup}\n         {tail}")
+    }
+
     /// Console errors the program page logged since `from` (a [`Engine::log_len`]).
     pub fn console_errors(&self, from: u64) -> Vec<String> {
         let text = std::fs::read(&self.log).unwrap_or_default();

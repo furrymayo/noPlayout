@@ -145,6 +145,9 @@ pub fn warm(bin: &Path, host: &Path, work: &Path, graphic: &Path) -> Outcome {
         if p["result"]["statusCode"] != 200 {
             f.push(format!("play after recovery: {p}"));
         }
+        if !f.is_empty() {
+            f.push(e.diagnose());
+        }
         e.stop()
     })();
     if let Err(e) = r {
@@ -170,6 +173,9 @@ pub fn cold(bin: &Path, host: &Path, work: &Path, graphic: &Path) -> Outcome {
         std::thread::sleep(Duration::from_millis(1500));
         if !loaded(&e) {
             f.push("the graphic is not loaded after the cold restore".into());
+        }
+        if !f.is_empty() {
+            f.push(e.diagnose());
         }
         e.stop()
     })();

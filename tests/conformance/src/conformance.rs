@@ -82,6 +82,9 @@ pub fn run(e: &Engine, dir: &Path, layer: u32, load_data: Option<&Value>) -> Out
     for c in e.console_errors(from) {
         o.failures.push(format!("console error: {c}"));
     }
+    if !o.failures.is_empty() {
+        o.failures.push(e.diagnose());
+    }
     o
 }
 
