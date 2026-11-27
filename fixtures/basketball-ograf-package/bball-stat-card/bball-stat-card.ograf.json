@@ -1,0 +1,185 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-stat-card",
+  "version": "1.0.0",
+  "name": "Basketball – Player Stat Card",
+  "description": "Player stat panel with up to five animated stat boxes (numbers count up) and an optional note line.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 1,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "firstName": {
+        "type": "string",
+        "label": "First name",
+        "gddType": "single-line",
+        "default": "JORDAN",
+        "order": 1
+      },
+      "lastName": {
+        "type": "string",
+        "label": "Last name",
+        "gddType": "single-line",
+        "default": "MITCHELL",
+        "order": 2
+      },
+      "number": {
+        "type": "string",
+        "label": "Number",
+        "gddType": "single-line",
+        "default": "23",
+        "order": 3,
+        "maxLength": 3
+      },
+      "title": {
+        "type": "string",
+        "label": "Title",
+        "gddType": "single-line",
+        "default": "TONIGHT",
+        "order": 4,
+        "description": "e.g. TONIGHT, FIRST HALF, SEASON AVERAGES."
+      },
+      "stats": {
+        "type": "array",
+        "label": "Stats",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "label": "Label",
+              "gddType": "single-line",
+              "default": "",
+              "order": 1
+            },
+            "value": {
+              "type": "string",
+              "label": "Value",
+              "gddType": "single-line",
+              "default": "",
+              "order": 2
+            }
+          }
+        },
+        "default": [
+          {
+            "label": "PTS",
+            "value": "18"
+          },
+          {
+            "label": "REB",
+            "value": "9"
+          },
+          {
+            "label": "AST",
+            "value": "4"
+          },
+          {
+            "label": "FG",
+            "value": "7-12"
+          },
+          {
+            "label": "3PT",
+            "value": "2-4"
+          }
+        ],
+        "order": 5,
+        "hidden": true,
+        "maxItems": 5,
+        "description": "Numeric values count up; others (e.g. 7-12) fade in."
+      },
+      "note": {
+        "type": "string",
+        "label": "Note line",
+        "gddType": "single-line",
+        "default": "CAREER-HIGH 9 REBOUNDS",
+        "order": 6,
+        "description": "Optional."
+      },
+      "teamColor": {
+        "type": "string",
+        "label": "Team colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#b3202a",
+        "order": 7,
+        "hidden": true
+      },
+      "teamLogo": {
+        "type": "string",
+        "label": "Team logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/home-logo.svg",
+        "order": 8,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 9,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 1400
+    },
+    {
+      "type": "stopAction",
+      "duration": 500
+    },
+    {
+      "type": "updateAction",
+      "duration": -1
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Fixtures are byte-identical copies of supplied material or generated vectors: no line-ending
+# conversion, no diffs as text merges (D-014, D-013).
+fixtures/** -text

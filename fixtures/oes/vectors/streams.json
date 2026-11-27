@@ -1,0 +1,1279 @@
+{
+ "cases": [
+  {
+   "datagrams": [
+    {
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "10",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    }
+   ],
+   "name": "captured_datagram",
+   "note": "the captured football datagram alone"
+  },
+  {
+   "datagrams": [
+    {
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    },
+    {
+     "hex": "026634b8b3393232313a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.11:5002"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "10",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "21",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393232313a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.11:5002",
+     "sport": "Football"
+    }
+   ],
+   "name": "two_senders",
+   "note": "two senders are framed and attributed separately"
+  },
+  {
+   "datagrams": [
+    {
+     "hex": "026634b8b3393231303a3330",
+     "sender": "192.0.2.10:5002"
+    },
+    {
+     "hex": "026634b8b3393232313a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.11:5002"
+    },
+    {
+     "hex": "303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "21",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393232313a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.11:5002",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "10",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    }
+   ],
+   "name": "split_frame_with_interloper",
+   "note": "A's frame split around B's datagram; per-sender framing keeps both"
+  },
+  {
+   "datagrams": [
+    {
+     "hex": "026634b8b33932",
+     "sender": "192.0.2.10:5002"
+    },
+    {
+     "hex": "3939",
+     "sender": "192.0.2.11:5002"
+    },
+    {
+     "hex": "31303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "10",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    }
+   ],
+   "name": "foreign_fragment_not_spliced",
+   "note": "a bare fragment from B mid-frame of A must not land in A's packet (A stays 10-3)"
+  },
+  {
+   "datagrams": [
+    {
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    },
+    {
+     "hex": "026634b8b3393231343a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "10",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231303a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "2",
+      "game_clock": "48:39",
+      "home_full_tol": "0",
+      "home_score": "14",
+      "possession": null,
+      "quarter": "2",
+      "shot_clock": "40",
+      "visitor_full_tol": "0",
+      "visitor_score": " 3",
+      "yards_to_go": "10"
+     },
+     "hex": "026634b8b3393231343a3330303a3a32313032353430382a0d",
+     "sender": "192.0.2.10:5002",
+     "sport": "Football"
+    }
+   ],
+   "name": "repeat_datagrams",
+   "note": "one sender, two datagrams, latest wins"
+  },
+  {
+   "datagrams": [
+    {
+     "hex": "ff1000020130300d026634b8b3393231303a073330303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a32313032353430382a0d0274bab9",
+     "sender": "serial"
+    },
+    {
+     "hex": "b53931",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303a30b4b43a3a303130323930300d0274bab9b538313a303a30b4b43a3a30313032383030",
+     "sender": "serial"
+    },
+    {
+     "hex": "0d0274bab9b537313a303a30b4b43a3a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3130323730300d02743a3a3a3a3a3a3a31",
+     "sender": "serial"
+    },
+    {
+     "hex": "313030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a30303a303a30303a303a30303030303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "373730300d",
+     "sender": "serial"
+    },
+    {
+     "hex": "02743a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3a3a3a3a31313030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "31303a303a30303a303a30303030303a383730300d02743a3a3a3a3a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a31323030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "31303a303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "30303a303a30303030303a383530300d0274313a313a3232323332",
+     "sender": "serial"
+    },
+    {
+     "hex": "313a3130303030303030303a36393030313a3a3a303a30303a303a30303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30303030303030303030303a30300d0274",
+     "sender": "serial"
+    },
+    {
+     "hex": "313a313a3232323332313a3230303030",
+     "sender": "serial"
+    },
+    {
+     "hex": "303030303a35383130313a3a3a303a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a303a30303a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30303030",
+     "sender": "serial"
+    },
+    {
+     "hex": "30303030303030",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a30300d0274313a31",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3232323332313a3330303030303030303a36363131313a3a3a303a30303a303a30303a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3a3a3a3a3a3a3a3a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3a3a3a3a3a3a3a3030",
+     "sender": "serial"
+    },
+    {
+     "hex": "3030303030303030303a3030",
+     "sender": "serial"
+    },
+    {
+     "hex": "0d0266b1b4b539313a303a30b3b3b83031313032353234",
+     "sender": "serial"
+    },
+    {
+     "hex": "300d0266",
+     "sender": "serial"
+    },
+    {
+     "hex": "b1b4b538313a303a30b3b3b83031313032353233300d0266b1b4b5",
+     "sender": "serial"
+    },
+    {
+     "hex": "37313a303a30b3b3b83031313032353232300d0276bab0b030313a313a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "b2b23030",
+     "sender": "serial"
+    },
+    {
+     "hex": "30313030",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a313a303a303a303a303a303a303a303a303a30300d0276bab0b030313a313a30b2b230303031",
+     "sender": "serial"
+    },
+    {
+     "hex": "3030303a313a303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a303a303a303a303a303a303a30300d0276bab0b03031",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a313a30b2b2303030313030303a313a303a303a303a303a303a303a303a303a30300d02",
+     "sender": "serial"
+    },
+    {
+     "hex": "6cb1b4b539313a303a303030303030b2b23a303a303a3ab0b0303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3ab0b0303a3ab0b0303a3a",
+     "sender": "serial"
+    },
+    {
+     "hex": "b0b030373930300d026cb1b4b538313a303a303030303030b2b23a303a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b030373830300d026cb1b4b537313a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303030303030b2b23a303a303a3ab0b0303a3ab0b0303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "3ab0b0303a3ab0b030373730300d026cb3b4b539313a303a303a3a3a3a3030303a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0303a3a3a3a303030300d02",
+     "sender": "serial"
+    },
+    {
+     "hex": "6cb3b4b538313a303a303a3a3a3a303030",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0303a3a3a3a303030300d026cb3b4b537",
+     "sender": "serial"
+    },
+    {
+     "hex": "313a303a303a3a3a3a3030303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a3a3a3a303030300d0277bab2b53931",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303a30303030303030303a303a30313235b0b030b0b030303030b0b030b0b030300d0277bab2",
+     "sender": "serial"
+    },
+    {
+     "hex": "b538313a303a30303030303030303a303a30313235b0b030b0b030303030b0b030b0b030300d02",
+     "sender": "serial"
+    },
+    {
+     "hex": "77bab2b537313a303a30303030303030303a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "313235b0b030b0b030303030b0b030b0b0",
+     "sender": "serial"
+    },
+    {
+     "hex": "30300d0273b4b4b539313a303a303a303a303a303a303a303a303a303a300d0273b4b4b538313a30",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303a303a303a303a303a303a303a303a300d0273b4b4b53731",
+     "sender": "serial"
+    },
+    {
+     "hex": "3a303a303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a303a",
+     "sender": "serial"
+    },
+    {
+     "hex": "303a303a303a303a303a300d",
+     "sender": "serial"
+    }
+   ],
+   "expected_per_sender": [
+    {
+     "decoded": {
+      "game_clock": " 9:59",
+      "home_20_tol": 0,
+      "home_bonus": false,
+      "home_fouls": " ",
+      "home_full_tol": "4",
+      "home_score": " 0",
+      "period": "1",
+      "possession": "home",
+      "shot_clock": "29",
+      "visitor_20_tol": 0,
+      "visitor_bonus": false,
+      "visitor_fouls": " ",
+      "visitor_full_tol": "4",
+      "visitor_score": " 0"
+     },
+     "hex": "0274bab9b539313a303a30b4b43a3a303130323930300d",
+     "sender": "serial",
+     "sport": "Basketball"
+    },
+    {
+     "decoded": {
+      "game_clock": " 9:58",
+      "home_20_tol": 0,
+      "home_bonus": false,
+      "home_fouls": " ",
+      "home_full_tol": "4",
+      "home_score": " 0",
+      "period": "1",
+      "possession": "home",
+      "shot_clock": "28",
+      "visitor_20_tol": 0,
+      "visitor_bonus": false,
+      "visitor_fouls": " ",
+      "visitor_full_tol": "4",
+      "visitor_score": " 0"
+     },
+     "hex": "0274bab9b538313a303a30b4b43a3a303130323830300d",
+     "sender": "serial",
+     "sport": "Basketball"
+    },
+    {
+     "decoded": {
+      "game_clock": " 9:57",
+      "home_20_tol": 0,
+      "home_bonus": false,
+      "home_fouls": " ",
+      "home_full_tol": "4",
+      "home_score": " 0",
+      "period": "1",
+      "possession": "home",
+      "shot_clock": "27",
+      "visitor_20_tol": 0,
+      "visitor_bonus": false,
+      "visitor_fouls": " ",
+      "visitor_full_tol": "4",
+      "visitor_score": " 0"
+     },
+     "hex": "0274bab9b537313a303a30b4b43a3a303130323730300d",
+     "sender": "serial",
+     "sport": "Basketball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "1",
+      "batter_num": " 1",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "outs": "0",
+      "pitch_speed": "077",
+      "strikes": "0"
+     },
+     "hex": "02743a3a3a3a3a3a3a31313030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a30303a303a30303a303a30303030303a373730300d",
+     "sender": "serial",
+     "sport": "Baseball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "1",
+      "batter_num": " 1",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "outs": "0",
+      "pitch_speed": "087",
+      "strikes": "1"
+     },
+     "hex": "02743a3a3a3a3a3a3a31313030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a31303a303a30303a303a30303030303a383730300d",
+     "sender": "serial",
+     "sport": "Baseball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "2",
+      "batter_num": " 1",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "outs": "0",
+      "pitch_speed": "085",
+      "strikes": "1"
+     },
+     "hex": "02743a3a3a3a3a3a3a31323030303030303a3a3a3a3a3a3a3a3a3a3a3a3a3a31303a303a30303a303a30303030303a383530300d",
+     "sender": "serial",
+     "sport": "Baseball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "0",
+      "batter_avg": "223",
+      "batter_num": " 2",
+      "batting_team": "TOP",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "inning": " 1",
+      "last_play": "N/A",
+      "outs": "1",
+      "pitch_speed": "069",
+      "pitcher_count": "  1",
+      "pitcher_num": "21",
+      "strikes": "0"
+     },
+     "hex": "0274313a313a3232323332313a3130303030303030303a36393030313a3a3a303a30303a303a30303a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30303030303030303030303a30300d",
+     "sender": "serial",
+     "sport": "Softball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "1",
+      "batter_avg": "223",
+      "batter_num": " 2",
+      "batting_team": "TOP",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "inning": " 1",
+      "last_play": "N/A",
+      "outs": "1",
+      "pitch_speed": "058",
+      "pitcher_count": "  2",
+      "pitcher_num": "21",
+      "strikes": "0"
+     },
+     "hex": "0274313a313a3232323332313a3230303030303030303a35383130313a3a3a303a30303a303a30303a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30303030303030303030303a30300d",
+     "sender": "serial",
+     "sport": "Softball"
+    },
+    {
+     "decoded": {
+      "away_errors": " 0",
+      "away_hits": " 0",
+      "away_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "away_runs": " 0",
+      "balls": "1",
+      "batter_avg": "223",
+      "batter_num": " 2",
+      "batting_team": "TOP",
+      "home_errors": " 0",
+      "home_hits": " 0",
+      "home_innings": [
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " ",
+       " "
+      ],
+      "home_runs": " 0",
+      "inning": " 1",
+      "last_play": "N/A",
+      "outs": "1",
+      "pitch_speed": "066",
+      "pitcher_count": "  3",
+      "pitcher_num": "21",
+      "strikes": "1"
+     },
+     "hex": "0274313a313a3232323332313a3330303030303030303a36363131313a3a3a303a30303a303a30303a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a30303030303030303030303a30300d",
+     "sender": "serial",
+     "sport": "Softball"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "1",
+      "game_clock": "14:59",
+      "home_full_tol": "3",
+      "home_score": " 0",
+      "possession": "home",
+      "quarter": "1",
+      "shot_clock": "24",
+      "visitor_full_tol": "3",
+      "visitor_score": " 0",
+      "yards_to_go": "10"
+     },
+     "hex": "0266b1b4b539313a303a30b3b3b83031313032353234300d",
+     "sender": "serial",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "1",
+      "game_clock": "14:58",
+      "home_full_tol": "3",
+      "home_score": " 0",
+      "possession": "home",
+      "quarter": "1",
+      "shot_clock": "23",
+      "visitor_full_tol": "3",
+      "visitor_score": " 0",
+      "yards_to_go": "10"
+     },
+     "hex": "0266b1b4b538313a303a30b3b3b83031313032353233300d",
+     "sender": "serial",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "ball_on": "25",
+      "down": "1",
+      "game_clock": "14:57",
+      "home_full_tol": "3",
+      "home_score": " 0",
+      "possession": "home",
+      "quarter": "1",
+      "shot_clock": "22",
+      "visitor_full_tol": "3",
+      "visitor_score": " 0",
+      "yards_to_go": "10"
+     },
+     "hex": "0266b1b4b537313a303a30b3b3b83031313032353232300d",
+     "sender": "serial",
+     "sport": "Football"
+    },
+    {
+     "decoded": {
+      "game_clock": " 0:00",
+      "home_full_tol": "2",
+      "home_score": " 1",
+      "home_set_scores": [
+       " 1",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "home_sets_won": "0",
+      "period": "1",
+      "possession": "home",
+      "visitor_full_tol": "2",
+      "visitor_score": " 0",
+      "visitor_set_scores": [
+       " 0",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "visitor_sets_won": "0"
+     },
+     "hex": "0276bab0b030313a313a30b2b2303030313030303a313a303a303a303a303a303a303a303a303a30300d",
+     "sender": "serial",
+     "sport": "Volleyball"
+    },
+    {
+     "decoded": {
+      "game_clock": " 0:00",
+      "home_full_tol": "2",
+      "home_score": " 1",
+      "home_set_scores": [
+       " 1",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "home_sets_won": "0",
+      "period": "1",
+      "possession": "home",
+      "visitor_full_tol": "2",
+      "visitor_score": " 0",
+      "visitor_set_scores": [
+       " 0",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "visitor_sets_won": "0"
+     },
+     "hex": "0276bab0b030313a313a30b2b2303030313030303a313a303a303a303a303a303a303a303a303a30300d",
+     "sender": "serial",
+     "sport": "Volleyball"
+    },
+    {
+     "decoded": {
+      "game_clock": " 0:00",
+      "home_full_tol": "2",
+      "home_score": " 1",
+      "home_set_scores": [
+       " 1",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "home_sets_won": "0",
+      "period": "1",
+      "possession": "home",
+      "visitor_full_tol": "2",
+      "visitor_score": " 0",
+      "visitor_set_scores": [
+       " 0",
+       " 0",
+       " 0",
+       " 0",
+       " 0"
+      ],
+      "visitor_sets_won": "0"
+     },
+     "hex": "0276bab0b030313a313a30b2b2303030313030303a313a303a303a303a303a303a303a303a303a30300d",
+     "sender": "serial",
+     "sport": "Volleyball"
+    },
+    {
+     "decoded": {
+      "game_clock": "14:59",
+      "home_full_tol": "2",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "shot_clock": "79",
+      "visitor_full_tol": "2",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb1b4b539313a303a303030303030b2b23a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b030373930300d",
+     "sender": "serial",
+     "sport": "Lacrosse"
+    },
+    {
+     "decoded": {
+      "game_clock": "14:58",
+      "home_full_tol": "2",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "shot_clock": "78",
+      "visitor_full_tol": "2",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb1b4b538313a303a303030303030b2b23a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b030373830300d",
+     "sender": "serial",
+     "sport": "Lacrosse"
+    },
+    {
+     "decoded": {
+      "game_clock": "14:57",
+      "home_full_tol": "2",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "shot_clock": "77",
+      "visitor_full_tol": "2",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb1b4b537313a303a303030303030b2b23a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b030373730300d",
+     "sender": "serial",
+     "sport": "Lacrosse"
+    },
+    {
+     "decoded": {
+      "game_clock": "34:59",
+      "home_corners": " 0",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb3b4b539313a303a303a3a3a3a3030303a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0303a3a3a3a303030300d",
+     "sender": "serial",
+     "sport": "Hockey"
+    },
+    {
+     "decoded": {
+      "game_clock": "34:58",
+      "home_corners": " 0",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb3b4b538313a303a303a3a3a3a3030303a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0303a3a3a3a303030300d",
+     "sender": "serial",
+     "sport": "Hockey"
+    },
+    {
+     "decoded": {
+      "game_clock": "34:57",
+      "home_corners": " 0",
+      "home_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": [
+       {
+        "player": " :",
+        "time": " 0:00"
+       },
+       {
+        "player": " :",
+        "time": " 0:00"
+       }
+      ],
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "026cb3b4b537313a303a303a3a3a3a3030303a303a303a3ab0b0303a3ab0b0303a3ab0b0303a3ab0b0303a3a3a3a303030300d",
+     "sender": "serial",
+     "sport": "Hockey"
+    },
+    {
+     "decoded": {
+      "game_clock": " 2:59",
+      "home_adv_time": "0:00",
+      "home_inj_time": "0:00",
+      "home_score": " 0",
+      "home_team_points": " 0",
+      "match_weight_class": "125",
+      "period": "1",
+      "visitor_adv_time": "0:00",
+      "visitor_inj_time": "0:00",
+      "visitor_score": " 0",
+      "visitor_team_points": " 0"
+     },
+     "hex": "0277bab2b539313a303a30303030303030303a303a30313235b0b030b0b030303030b0b030b0b030300d",
+     "sender": "serial",
+     "sport": "Wrestling"
+    },
+    {
+     "decoded": {
+      "game_clock": " 2:58",
+      "home_adv_time": "0:00",
+      "home_inj_time": "0:00",
+      "home_score": " 0",
+      "home_team_points": " 0",
+      "match_weight_class": "125",
+      "period": "1",
+      "visitor_adv_time": "0:00",
+      "visitor_inj_time": "0:00",
+      "visitor_score": " 0",
+      "visitor_team_points": " 0"
+     },
+     "hex": "0277bab2b538313a303a30303030303030303a303a30313235b0b030b0b030303030b0b030b0b030300d",
+     "sender": "serial",
+     "sport": "Wrestling"
+    },
+    {
+     "decoded": {
+      "game_clock": " 2:57",
+      "home_adv_time": "0:00",
+      "home_inj_time": "0:00",
+      "home_score": " 0",
+      "home_team_points": " 0",
+      "match_weight_class": "125",
+      "period": "1",
+      "visitor_adv_time": "0:00",
+      "visitor_inj_time": "0:00",
+      "visitor_score": " 0",
+      "visitor_team_points": " 0"
+     },
+     "hex": "0277bab2b537313a303a30303030303030303a303a30313235b0b030b0b030303030b0b030b0b030300d",
+     "sender": "serial",
+     "sport": "Wrestling"
+    },
+    {
+     "decoded": {
+      "game_clock": "44:59",
+      "home_corners": " 0",
+      "home_penalties": " 0",
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": " 0",
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "0273b4b4b539313a303a303a303a303a303a303a303a303a303a300d",
+     "sender": "serial",
+     "sport": "Soccer"
+    },
+    {
+     "decoded": {
+      "game_clock": "44:58",
+      "home_corners": " 0",
+      "home_penalties": " 0",
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": " 0",
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "0273b4b4b538313a303a303a303a303a303a303a303a303a303a300d",
+     "sender": "serial",
+     "sport": "Soccer"
+    },
+    {
+     "decoded": {
+      "game_clock": "44:57",
+      "home_corners": " 0",
+      "home_penalties": " 0",
+      "home_saves": " 0",
+      "home_score": " 0",
+      "home_shots": " 0",
+      "period": "1",
+      "visitor_corners": " 0",
+      "visitor_penalties": " 0",
+      "visitor_saves": " 0",
+      "visitor_score": " 0",
+      "visitor_shots": " 0"
+     },
+     "hex": "0273b4b4b537313a303a303a303a303a303a303a303a303a303a300d",
+     "sender": "serial",
+     "sport": "Soccer"
+    }
+   ],
+   "name": "byte_stream_chunked",
+   "note": "serial/TCP stream in uneven chunks with garbage and bad frames"
+  }
+ ]
+}

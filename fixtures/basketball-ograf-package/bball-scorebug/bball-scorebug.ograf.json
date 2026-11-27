@@ -1,0 +1,497 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-scorebug",
+  "version": "1.0.0",
+  "name": "Basketball – Scorebug",
+  "description": "Persistent score bug: scores, period, game clock, shot clock, timeouts, bonus and possession. Runs its own clock (start/stop/set) or follows an external data feed via updates. Score increases animate automatically.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 1,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "awayAbbr": {
+        "type": "string",
+        "label": "Away abbreviation",
+        "gddType": "single-line",
+        "default": "RIV",
+        "order": 1,
+        "maxLength": 5
+      },
+      "awayScore": {
+        "type": "integer",
+        "label": "Away score",
+        "default": 0,
+        "order": 2,
+        "minimum": 0,
+        "maximum": 999
+      },
+      "homeAbbr": {
+        "type": "string",
+        "label": "Home abbreviation",
+        "gddType": "single-line",
+        "default": "CSU",
+        "order": 3,
+        "maxLength": 5
+      },
+      "homeScore": {
+        "type": "integer",
+        "label": "Home score",
+        "default": 0,
+        "order": 4,
+        "minimum": 0,
+        "maximum": 999
+      },
+      "period": {
+        "type": "string",
+        "label": "Period",
+        "gddType": "single-line",
+        "default": "1ST",
+        "order": 5,
+        "description": "Free text, e.g. 1ST, 2ND, 3RD, 4TH, HALF, OT, 2OT, FINAL.",
+        "maxLength": 6
+      },
+      "gameClock": {
+        "type": "string",
+        "label": "Game clock",
+        "gddType": "single-line",
+        "default": "20:00",
+        "order": 6,
+        "description": "M:SS or SS.t – sets the clock. Leave the clock running or stopped with Start/Stop Clock.",
+        "hidden": true
+      },
+      "shotClock": {
+        "type": "string",
+        "label": "Shot clock",
+        "gddType": "single-line",
+        "default": "30",
+        "order": 7,
+        "description": "Seconds.",
+        "hidden": true
+      },
+      "clockRunning": {
+        "type": "boolean",
+        "label": "Clock running",
+        "default": false,
+        "order": 8,
+        "hidden": true,
+        "description": "Run the game and shot clocks inside the graphic."
+      },
+      "showShotClock": {
+        "type": "boolean",
+        "label": "Show shot clock",
+        "default": true,
+        "order": 9,
+        "hidden": true
+      },
+      "shotClockTenths": {
+        "type": "boolean",
+        "label": "Shot clock tenths under 5s",
+        "default": true,
+        "order": 10,
+        "hidden": true
+      },
+      "possession": {
+        "type": "string",
+        "label": "Possession",
+        "gddType": "select",
+        "enum": [
+          "none",
+          "away",
+          "home"
+        ],
+        "gddOptions": {
+          "labels": {
+            "none": "None",
+            "away": "Away",
+            "home": "Home"
+          }
+        },
+        "default": "none",
+        "order": 11,
+        "hidden": true
+      },
+      "awayTimeouts": {
+        "type": "integer",
+        "label": "Away timeouts left",
+        "default": 4,
+        "order": 12,
+        "minimum": 0,
+        "maximum": 8,
+        "hidden": true
+      },
+      "homeTimeouts": {
+        "type": "integer",
+        "label": "Home timeouts left",
+        "default": 4,
+        "order": 13,
+        "minimum": 0,
+        "maximum": 8,
+        "hidden": true
+      },
+      "maxTimeouts": {
+        "type": "integer",
+        "label": "Timeouts per game",
+        "default": 4,
+        "order": 14,
+        "minimum": 0,
+        "maximum": 8,
+        "hidden": true
+      },
+      "awayBonus": {
+        "type": "string",
+        "label": "Away bonus",
+        "gddType": "select",
+        "enum": [
+          "none",
+          "bonus",
+          "double"
+        ],
+        "gddOptions": {
+          "labels": {
+            "none": "None",
+            "bonus": "Bonus",
+            "double": "Double bonus"
+          }
+        },
+        "default": "none",
+        "order": 15,
+        "hidden": true
+      },
+      "homeBonus": {
+        "type": "string",
+        "label": "Home bonus",
+        "gddType": "select",
+        "enum": [
+          "none",
+          "bonus",
+          "double"
+        ],
+        "gddOptions": {
+          "labels": {
+            "none": "None",
+            "bonus": "Bonus",
+            "double": "Double bonus"
+          }
+        },
+        "default": "none",
+        "order": 16,
+        "hidden": true
+      },
+      "showFouls": {
+        "type": "boolean",
+        "label": "Show team fouls",
+        "default": false,
+        "order": 17,
+        "hidden": true,
+        "description": "Shows \"FOULS n\" when the team is not in the bonus."
+      },
+      "awayFouls": {
+        "type": "integer",
+        "label": "Away team fouls",
+        "default": 0,
+        "order": 18,
+        "minimum": 0,
+        "maximum": 50,
+        "hidden": true
+      },
+      "homeFouls": {
+        "type": "integer",
+        "label": "Home team fouls",
+        "default": 0,
+        "order": 19,
+        "minimum": 0,
+        "maximum": 50,
+        "hidden": true
+      },
+      "awayRank": {
+        "type": "string",
+        "label": "Away rank",
+        "gddType": "single-line",
+        "default": "",
+        "order": 20,
+        "description": "Leave empty for unranked.",
+        "hidden": true,
+        "maxLength": 3
+      },
+      "homeRank": {
+        "type": "string",
+        "label": "Home rank",
+        "gddType": "single-line",
+        "default": "12",
+        "order": 21,
+        "description": "Leave empty for unranked.",
+        "hidden": true,
+        "maxLength": 3
+      },
+      "awayColor": {
+        "type": "string",
+        "label": "Away colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#1f4fa3",
+        "order": 22,
+        "hidden": true
+      },
+      "homeColor": {
+        "type": "string",
+        "label": "Home colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#b3202a",
+        "order": 23,
+        "hidden": true
+      },
+      "awayLogo": {
+        "type": "string",
+        "label": "Away logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/away-logo.svg",
+        "order": 24,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "homeLogo": {
+        "type": "string",
+        "label": "Home logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/home-logo.svg",
+        "order": 25,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 26,
+        "hidden": true
+      },
+      "lift": {
+        "type": "boolean",
+        "label": "Lift for ticker",
+        "default": false,
+        "order": 27,
+        "hidden": true,
+        "description": "Raises the bug so the score ticker can run underneath."
+      },
+      "scoreFlash": {
+        "type": "boolean",
+        "label": "Animate score changes",
+        "default": true,
+        "order": 28,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "customActions": [
+    {
+      "id": "addPoints",
+      "name": "Add points",
+      "description": "Add points to a team (animates).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "team": {
+            "type": "string",
+            "label": "Team",
+            "gddType": "select",
+            "enum": [
+              "away",
+              "home"
+            ],
+            "gddOptions": {
+              "labels": {
+                "away": "Away",
+                "home": "Home"
+              }
+            },
+            "default": "home",
+            "order": 1
+          },
+          "points": {
+            "type": "integer",
+            "label": "Points",
+            "default": 2,
+            "order": 2,
+            "minimum": -3,
+            "maximum": 3,
+            "description": "Use a negative number to correct a score."
+          }
+        }
+      }
+    },
+    {
+      "id": "startClock",
+      "name": "Start clock",
+      "description": "Start the game and shot clocks.",
+      "schema": null
+    },
+    {
+      "id": "stopClock",
+      "name": "Stop clock",
+      "description": "Stop the game and shot clocks.",
+      "schema": null
+    },
+    {
+      "id": "setClock",
+      "name": "Set clock",
+      "description": "Set the game and/or shot clock. Empty fields are left unchanged.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "gameClock": {
+            "type": "string",
+            "label": "Game clock",
+            "gddType": "single-line",
+            "default": "",
+            "order": 1
+          },
+          "shotClock": {
+            "type": "string",
+            "label": "Shot clock",
+            "gddType": "single-line",
+            "default": "",
+            "order": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "resetShotClock",
+      "name": "Reset shot clock",
+      "description": "Reset the shot clock (30 or 20 in NCAA).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "seconds": {
+            "type": "integer",
+            "label": "Seconds",
+            "default": 30,
+            "order": 1,
+            "minimum": 0,
+            "maximum": 99
+          }
+        }
+      }
+    },
+    {
+      "id": "showMessage",
+      "name": "Show message",
+      "description": "Slide a message strip out of the top of the bug (TIMEOUT, REVIEW, etc.).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "label": "Text",
+            "gddType": "single-line",
+            "default": "TIMEOUT",
+            "order": 1
+          },
+          "color": {
+            "type": "string",
+            "label": "Colour",
+            "gddType": "select",
+            "enum": [
+              "accent",
+              "away",
+              "home"
+            ],
+            "gddOptions": {
+              "labels": {
+                "accent": "Accent",
+                "away": "Away team",
+                "home": "Home team"
+              }
+            },
+            "default": "accent",
+            "order": 2
+          },
+          "autoHideSeconds": {
+            "type": "number",
+            "label": "Auto hide after (s, 0 = stay)",
+            "default": 0,
+            "order": 3,
+            "minimum": 0,
+            "maximum": 600
+          }
+        }
+      }
+    },
+    {
+      "id": "hideMessage",
+      "name": "Hide message",
+      "description": "Hide the message strip.",
+      "schema": null
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 1100
+    },
+    {
+      "type": "stopAction",
+      "duration": 600
+    },
+    {
+      "type": "updateAction",
+      "duration": -1
+    }
+  ]
+}

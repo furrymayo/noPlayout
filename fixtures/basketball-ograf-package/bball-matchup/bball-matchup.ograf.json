@@ -1,0 +1,381 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-matchup",
+  "version": "1.0.0",
+  "name": "Basketball – Matchup / Starting Lineups",
+  "description": "Full-screen open. Step 1: team-vs-team matchup with records and ranks. Step 2: starting lineups. Next again takes it off.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 2,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "eventTitle": {
+        "type": "string",
+        "label": "Event title",
+        "gddType": "single-line",
+        "default": "MEN'S BASKETBALL",
+        "order": 1
+      },
+      "eventSubtitle": {
+        "type": "string",
+        "label": "Event subtitle",
+        "gddType": "single-line",
+        "default": "CENTRAL STATE ARENA  •  TIP-OFF 7:00 PM",
+        "order": 2
+      },
+      "awayName": {
+        "type": "string",
+        "label": "Away school",
+        "gddType": "single-line",
+        "default": "RIVERTON",
+        "order": 3
+      },
+      "awayMascot": {
+        "type": "string",
+        "label": "Away mascot",
+        "gddType": "single-line",
+        "default": "Hawks",
+        "order": 4,
+        "hidden": true
+      },
+      "awayRecord": {
+        "type": "string",
+        "label": "Away record",
+        "gddType": "single-line",
+        "default": "14-6, 6-3 CONF",
+        "order": 5,
+        "hidden": true
+      },
+      "awayRank": {
+        "type": "string",
+        "label": "Away rank",
+        "gddType": "single-line",
+        "default": "",
+        "order": 6,
+        "hidden": true,
+        "maxLength": 3
+      },
+      "homeName": {
+        "type": "string",
+        "label": "Home school",
+        "gddType": "single-line",
+        "default": "CENTRAL STATE",
+        "order": 7
+      },
+      "homeMascot": {
+        "type": "string",
+        "label": "Home mascot",
+        "gddType": "single-line",
+        "default": "Lions",
+        "order": 8,
+        "hidden": true
+      },
+      "homeRecord": {
+        "type": "string",
+        "label": "Home record",
+        "gddType": "single-line",
+        "default": "17-3, 8-1 CONF",
+        "order": 9,
+        "hidden": true
+      },
+      "homeRank": {
+        "type": "string",
+        "label": "Home rank",
+        "gddType": "single-line",
+        "default": "12",
+        "order": 10,
+        "hidden": true,
+        "maxLength": 3
+      },
+      "lineupTitle": {
+        "type": "string",
+        "label": "Lineup title",
+        "gddType": "single-line",
+        "default": "STARTING LINEUPS",
+        "order": 11,
+        "hidden": true
+      },
+      "awayLineup": {
+        "type": "array",
+        "label": "Away starters",
+        "items": {
+          "type": "object",
+          "properties": {
+            "number": {
+              "type": "string",
+              "label": "No.",
+              "gddType": "single-line",
+              "default": "",
+              "order": 1
+            },
+            "name": {
+              "type": "string",
+              "label": "Name",
+              "gddType": "single-line",
+              "default": "",
+              "order": 2
+            },
+            "position": {
+              "type": "string",
+              "label": "Pos",
+              "gddType": "single-line",
+              "default": "",
+              "order": 3
+            },
+            "info": {
+              "type": "string",
+              "label": "Info",
+              "gddType": "single-line",
+              "default": "",
+              "order": 4
+            }
+          }
+        },
+        "default": [
+          {
+            "number": "1",
+            "name": "Marcus Hale",
+            "position": "G",
+            "info": "6-3  •  SR"
+          },
+          {
+            "number": "5",
+            "name": "Devin Ortiz",
+            "position": "G",
+            "info": "6-1  •  JR"
+          },
+          {
+            "number": "11",
+            "name": "Tre Wallace",
+            "position": "F",
+            "info": "6-7  •  SO"
+          },
+          {
+            "number": "24",
+            "name": "Isaiah Brooks",
+            "position": "F",
+            "info": "6-8  •  SR"
+          },
+          {
+            "number": "33",
+            "name": "Noah Petersen",
+            "position": "C",
+            "info": "7-0  •  JR"
+          }
+        ],
+        "order": 12,
+        "hidden": true,
+        "maxItems": 6
+      },
+      "homeLineup": {
+        "type": "array",
+        "label": "Home starters",
+        "items": {
+          "type": "object",
+          "properties": {
+            "number": {
+              "type": "string",
+              "label": "No.",
+              "gddType": "single-line",
+              "default": "",
+              "order": 1
+            },
+            "name": {
+              "type": "string",
+              "label": "Name",
+              "gddType": "single-line",
+              "default": "",
+              "order": 2
+            },
+            "position": {
+              "type": "string",
+              "label": "Pos",
+              "gddType": "single-line",
+              "default": "",
+              "order": 3
+            },
+            "info": {
+              "type": "string",
+              "label": "Info",
+              "gddType": "single-line",
+              "default": "",
+              "order": 4
+            }
+          }
+        },
+        "default": [
+          {
+            "number": "2",
+            "name": "Chris Dawson",
+            "position": "G",
+            "info": "6-2  •  SR"
+          },
+          {
+            "number": "10",
+            "name": "Andre Simmons",
+            "position": "G",
+            "info": "6-4  •  FR"
+          },
+          {
+            "number": "15",
+            "name": "Elijah Grant",
+            "position": "F",
+            "info": "6-6  •  JR"
+          },
+          {
+            "number": "23",
+            "name": "Jordan Mitchell",
+            "position": "F",
+            "info": "6-9  •  SR"
+          },
+          {
+            "number": "44",
+            "name": "Samuel Okafor",
+            "position": "C",
+            "info": "6-11  •  SO"
+          }
+        ],
+        "order": 13,
+        "hidden": true,
+        "maxItems": 6
+      },
+      "awayCoach": {
+        "type": "string",
+        "label": "Away head coach",
+        "gddType": "single-line",
+        "default": "Head Coach  Ray Thompson",
+        "order": 14,
+        "hidden": true
+      },
+      "homeCoach": {
+        "type": "string",
+        "label": "Home head coach",
+        "gddType": "single-line",
+        "default": "Head Coach  Lisa Moreno",
+        "order": 15,
+        "hidden": true
+      },
+      "footer": {
+        "type": "string",
+        "label": "Footer / sponsor line",
+        "gddType": "single-line",
+        "default": "",
+        "order": 16,
+        "description": "Optional, e.g. \"PRESENTED BY YOUR SPONSOR\".",
+        "hidden": true
+      },
+      "awayColor": {
+        "type": "string",
+        "label": "Away colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#1f4fa3",
+        "order": 17,
+        "hidden": true
+      },
+      "homeColor": {
+        "type": "string",
+        "label": "Home colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#b3202a",
+        "order": 18,
+        "hidden": true
+      },
+      "awayLogo": {
+        "type": "string",
+        "label": "Away logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/away-logo.svg",
+        "order": 19,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "homeLogo": {
+        "type": "string",
+        "label": "Home logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/home-logo.svg",
+        "order": 20,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 21,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 1400
+    },
+    {
+      "type": "stopAction",
+      "duration": 800
+    },
+    {
+      "type": "updateAction",
+      "duration": 0
+    }
+  ]
+}

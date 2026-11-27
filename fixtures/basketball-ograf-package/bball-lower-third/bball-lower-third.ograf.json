@@ -1,0 +1,128 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-lower-third",
+  "version": "1.0.0",
+  "name": "Basketball – Lower Third",
+  "description": "Player / person ID lower third with jersey number, two-line name and a detail line. Leave the number empty for coaches and commentators.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 1,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "firstName": {
+        "type": "string",
+        "label": "First name",
+        "gddType": "single-line",
+        "default": "JORDAN",
+        "order": 1
+      },
+      "lastName": {
+        "type": "string",
+        "label": "Last name",
+        "gddType": "single-line",
+        "default": "MITCHELL",
+        "order": 2
+      },
+      "number": {
+        "type": "string",
+        "label": "Number",
+        "gddType": "single-line",
+        "default": "23",
+        "order": 3,
+        "description": "Leave empty to hide the number box.",
+        "maxLength": 3
+      },
+      "detail": {
+        "type": "string",
+        "label": "Detail line",
+        "gddType": "single-line",
+        "default": "GUARD  •  SENIOR  •  RALEIGH, NC",
+        "order": 4
+      },
+      "teamColor": {
+        "type": "string",
+        "label": "Team colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#b3202a",
+        "order": 5,
+        "hidden": true
+      },
+      "teamLogo": {
+        "type": "string",
+        "label": "Team logo",
+        "gddType": "file-path/image-path",
+        "gddOptions": {
+          "extensions": [
+            "png",
+            "svg",
+            "webp",
+            "jpg",
+            "jpeg",
+            "gif"
+          ]
+        },
+        "default": "assets/home-logo.svg",
+        "order": 6,
+        "hidden": true,
+        "description": "Path relative to this graphic folder, or an absolute URL."
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 7,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 1000
+    },
+    {
+      "type": "stopAction",
+      "duration": 500
+    },
+    {
+      "type": "updateAction",
+      "duration": 0
+    }
+  ]
+}

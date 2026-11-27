@@ -1,0 +1,204 @@
+{
+  "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+  "id": "bball-ticker",
+  "version": "1.0.0",
+  "name": "Basketball – Score Ticker",
+  "description": "Bottom ticker that flips through other scores or text items. Use with the scorebug \"Lift for ticker\" option.",
+  "author": {
+    "name": "Basketball OGraf Package"
+  },
+  "main": "graphic.mjs",
+  "supportsRealTime": true,
+  "supportsNonRealTime": false,
+  "stepCount": 1,
+  "renderRequirements": [
+    {
+      "resolution": {
+        "width": {
+          "ideal": 1920
+        },
+        "height": {
+          "ideal": 1080
+        }
+      }
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "label": "Label",
+        "gddType": "single-line",
+        "default": "AROUND THE CONFERENCE",
+        "order": 1
+      },
+      "items": {
+        "type": "array",
+        "label": "Items",
+        "items": {
+          "type": "object",
+          "properties": {
+            "team1": {
+              "type": "string",
+              "label": "Team 1",
+              "gddType": "single-line",
+              "default": "",
+              "order": 1
+            },
+            "score1": {
+              "type": "string",
+              "label": "Score 1",
+              "gddType": "single-line",
+              "default": "",
+              "order": 2
+            },
+            "team2": {
+              "type": "string",
+              "label": "Team 2",
+              "gddType": "single-line",
+              "default": "",
+              "order": 3
+            },
+            "score2": {
+              "type": "string",
+              "label": "Score 2",
+              "gddType": "single-line",
+              "default": "",
+              "order": 4
+            },
+            "status": {
+              "type": "string",
+              "label": "Status",
+              "gddType": "single-line",
+              "default": "",
+              "order": 5
+            },
+            "text": {
+              "type": "string",
+              "label": "Text (instead of a score)",
+              "gddType": "single-line",
+              "default": "",
+              "order": 6
+            }
+          }
+        },
+        "default": [
+          {
+            "team1": "WESTFIELD",
+            "score1": "71",
+            "team2": "NORTH VALLEY",
+            "score2": "64",
+            "status": "FINAL",
+            "text": ""
+          },
+          {
+            "team1": "BAYSIDE",
+            "score1": "38",
+            "team2": "12 LAKEMONT",
+            "score2": "41",
+            "status": "HALF",
+            "text": ""
+          },
+          {
+            "team1": "EASTERN TECH",
+            "score1": "55",
+            "team2": "PINE RIDGE",
+            "score2": "57",
+            "status": "2ND 4:12",
+            "text": ""
+          },
+          {
+            "team1": "SUMMIT",
+            "score1": "",
+            "team2": "HARBOR CITY",
+            "score2": "",
+            "status": "9:00 PM",
+            "text": ""
+          },
+          {
+            "team1": "",
+            "score1": "",
+            "team2": "",
+            "score2": "",
+            "status": "",
+            "text": "NEXT HOME GAME: SATURDAY VS. WESTFIELD  •  2:00 PM"
+          }
+        ],
+        "order": 2,
+        "hidden": true,
+        "maxItems": 40
+      },
+      "dwellSeconds": {
+        "type": "number",
+        "label": "Seconds per item",
+        "default": 6,
+        "order": 3,
+        "minimum": 1,
+        "maximum": 120,
+        "hidden": true
+      },
+      "paused": {
+        "type": "boolean",
+        "label": "Paused",
+        "default": false,
+        "order": 4,
+        "hidden": true,
+        "description": "Hold on the current item."
+      },
+      "accentColor": {
+        "type": "string",
+        "label": "Accent colour",
+        "gddType": "color-rrggbb",
+        "pattern": "^#[0-9a-f]{6}$",
+        "default": "#f5b700",
+        "order": 5,
+        "hidden": true
+      }
+    }
+  },
+  "thumbnails": [
+    {
+      "file": "thumbnail.png",
+      "resolution": {
+        "width": 1280,
+        "height": 720
+      }
+    },
+    {
+      "file": "thumbnail-small.png",
+      "resolution": {
+        "width": 480,
+        "height": 270
+      }
+    }
+  ],
+  "customActions": [
+    {
+      "id": "nextItem",
+      "name": "Next item",
+      "description": "Flip to the next item now.",
+      "schema": null
+    },
+    {
+      "id": "previousItem",
+      "name": "Previous item",
+      "description": "Flip to the previous item now.",
+      "schema": null
+    }
+  ],
+  "actionDurations": [
+    {
+      "type": "playAction",
+      "duration": 900
+    },
+    {
+      "type": "stopAction",
+      "duration": 500
+    },
+    {
+      "type": "updateAction",
+      "duration": 0
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220">
+  <path d="M100 6 L188 34 V104 C188 160 148 196 100 214 C52 196 12 160 12 104 V34 Z" fill="#ffffff"/>
+  <path d="M100 20 L174 44 V104 C174 152 140 182 100 198 C60 182 26 152 26 104 V44 Z" fill="#b3202a"/>
+  <path d="M100 20 L174 44 V70 H26 V44 Z" fill="#7f141c"/>
+  <text x="100" y="168" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="104" fill="#ffffff">C</text>
+</svg>
