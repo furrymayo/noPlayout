@@ -1,0 +1,34 @@
+noPlayout
+Copyright 2026 The noPlayout authors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes or is designed to work with the following third-party material.
+
+NDI
+  NDI® is a registered trademark of Vizrt NDI AB.
+  noPlayout does not contain or redistribute the NDI SDK or NDI Tools. The NDI runtime, where
+  used, is installed separately by the user under Vizrt's own licence.
+
+Independent JPEG Group
+  This software is based in part on the work of the Independent JPEG Group.
+  (Credited for the jpeg-encoder crate, IJG-licensed, used for preview images.)
+
+Chromium Embedded Framework and Chromium
+  noPlayout's renderer uses the Chromium Embedded Framework (CEF), Copyright (c) 2008-2026
+  Marshall A. Greenblatt, BSD 3-Clause licence, and Chromium, Copyright The Chromium Authors,
+  BSD-style licence plus the third-party licences listed in Chromium's credits. CEF binaries are
+  downloaded at build time and are not stored in this repository.
+
+OGraf
+  noPlayout hosts graphics that follow the EBU OGraf specification (https://ograf.ebu.io/).
+  OGraf is developed by the European Broadcasting Union (EBU); "OGraf" names that specification.
+
+Test fixtures
+  fixtures/basketball-ograf-package/: Basketball OGraf Package, authored by Caleb (GitHub:
+  furrymayo) and contributed to this repository under the Apache License, Version 2.0. The Barlow and Barlow
+  Condensed fonts bundled with it are Copyright 2017 The Barlow Project Authors, licensed under
+  the SIL Open Font License 1.1 (see each graphic's lib/fonts/OFL-Barlow.txt).
+
+  fixtures/oes/reference/: from unc-virtual-score-server, Copyright (c) 2023 furrymayo, MIT
+  licence (fixtures/oes/reference/LICENSE-MIT).
