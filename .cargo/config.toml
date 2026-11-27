@@ -1,0 +1,9 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+[env]
+# cef-dll-sys resolves CEF to `$CEF_PATH/<cef version>/<os_arch>` and downloads it there on first
+# build if it is missing. Pointing every profile (debug, release, clippy) at one directory keeps a
+# single ~300 MB copy per target instead of one per build-script hash. `cargo xtask cef` fills the
+# same place with export-cef-dir (CI caches it).
+CEF_PATH = { value = "target/cef", relative = true }

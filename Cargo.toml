@@ -1,0 +1,116 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/noplayout-core",
+    "crates/noplayout-renderer",
+    "crates/noplayout-output",
+    "crates/noplayout-app",
+    "crates/noplayout-proto",
+    "crates/noplayout-frames",
+    "crates/noplayout-ndi",
+    "crates/noplayout-pixels",
+    "crates/noplayout-oracle",
+    "crates/noplayout-datasource",
+    "crates/noplayout-decoder-oes",
+    "crates/xtask",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.100.0"
+license = "Apache-2.0"
+repository = "https://github.com/furrymayo/noPlayout"
+publish = false
+
+# Every pin from PLAN.md §3 (verified 2026-11-26). Crates take what they need with
+# `dep.workspace = true`; a pin that no crate uses yet is not resolved into Cargo.lock.
+[workspace.dependencies]
+# Internal crates
+noplayout-core = { path = "crates/noplayout-core" }
+noplayout-proto = { path = "crates/noplayout-proto" }
+noplayout-frames = { path = "crates/noplayout-frames" }
+noplayout-ndi = { path = "crates/noplayout-ndi" }
+noplayout-pixels = { path = "crates/noplayout-pixels" }
+noplayout-oracle = { path = "crates/noplayout-oracle" }
+noplayout-datasource = { path = "crates/noplayout-datasource" }
+noplayout-decoder-oes = { path = "crates/noplayout-decoder-oes" }
+
+# CEF (renderer). Pinned exactly at 156.7.0+156.0.31: cargo ignores `+build` metadata in a
+# requirement, so the manifest says `=156.7.0` and Cargo.lock carries `+156.0.31` (an xtask
+# test checks both). Default features `sandbox, build-util, resources`; `accelerated_osr`
+# stays off (E-005).
+cef = { version = "=156.7.0" }
+export-cef-dir = { version = "=156.7.0" }
+
+# NDI (output process, M2). No default features (PLAN §3).
+grafton-ndi = { version = "=3.0.0", default-features = false }
+
+# App shell
+tauri = { version = "=2.12.7" }
+tauri-build = { version = "=2.7.6" }
+tauri-plugin-single-instance = { version = "=2.5.5" }
+
+# HTTP / API (engine)
+axum = { version = "=0.8.9", features = ["ws", "macros", "json", "query", "multipart"] }
+tower-http = { version = "=0.7.1", features = ["fs", "trace", "limit"] }
+utoipa = { version = "=6.0.0" }
+utoipa-axum = { version = "=0.3.0" }
+utoipa-scalar = { version = "=0.4.0" }
+
+# Async + IPC
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "fs", "signal", "io-util", "process"] }
+tokio-util = { version = "=0.7.20", features = ["codec"] }
+interprocess = { version = "=2.4.10" }
+postcard = { version = "=1.2.0", default-features = false, features = ["use-std"] }
+
+# Data
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.154" }
+jsonschema = { version = "=0.63.2", default-features = false, features = ["resolve-file"] }
+zip = { version = "=9.8.2" }
+directories = { version = "=6.0.0" }
+uuid = { version = "=1.29.3", features = ["v7", "serde"] }
+
+# Logging + errors
+tracing = { version = "=0.1.44" }
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt"] }
+tracing-appender = { version = "=0.2.5" }
+thiserror = { version = "=2.0.21" }
+anyhow = { version = "=1.0.105" }
+
+# Pixels / images
+fast_image_resize = { version = "=6.2.0" }
+jpeg-encoder = { version = "=0.7.1", features = ["simd"] }
+png = { version = "=0.18.1" }
+
+# Data sources
+serialport = { version = "=4.10.1" }
+tokio-serial = { version = "=5.5.0" }
+socket2 = { version = "=0.6.5" }
+
+# Health
+sysinfo = { version = "=0.40.4" }
+
+# Shared memory paint ring (version-checked only; API read in M1 task 4 / S8)
+iceoryx2 = { version = "=0.10.1" }
+memmap2 = { version = "=0.9.12" }
+
+# Tests
+insta = { version = "=1.49.0" }
+
+# Build tooling (xtask): the macOS dev bundle's Info.plist version, as cef's bundler expects
+semver = { version = "=1.0.28" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.cargo]
+# PLAN §3: the workspace carries every pin before any crate uses it.
+unused_workspace_dependencies = "allow"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+
+[profile.release]
+debug = "line-tables-only"
