@@ -650,3 +650,77 @@ fn standby_held_results_are_pruned_as_the_active_commits() {
     assert_eq!(s.counters.dropped_results, 0);
     assert_eq!(s.counters.mirror_divergence, 0);
 }
+
+/// The `Action`s a state step sent to connection 7 (a mirror registered by the test).
+fn actions(out: &Out) -> Vec<Action> {
+    out.sends
+        .iter()
+        .filter_map(|(c, m)| match m {
+            HostDown::Action(a) if *c == 7 => Some(a.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn ts_slot_is_the_output_slot_after_issue_and_non_decreasing_in_seq_order() {
+    let mut s = ch();
+    s.register(7, false, &reg(Role::WebFill, None, None))
+        .unwrap();
+    let (_, out) = s
+        .dispatch(Command::Load {
+            layer: 10,
+            graphic_url: "u".into(),
+            data: None,
+            cued: false,
+        })
+        .unwrap();
+    assert_eq!(actions(&out)[0].ts.slot, None, "no output process: no slot");
+    let rate = noplayout_frames::clock::Rate::P5994;
+    let epoch = noplayout_frames::clock::mono_ns();
+    s.set_slot_clock(Some(crate::time::SlotClock {
+        epoch_mono_ns: epoch,
+        rate,
+    }));
+    let mut last: Option<(u64, u64)> = None;
+    for n in 0..60 {
+        let before = noplayout_frames::clock::mono_ns();
+        let (_, out) = if n % 2 == 0 {
+            s.dispatch(Command::Update {
+                target: Target::Layer(10),
+                data: json!({"n": n}),
+                skip_animation: false,
+            })
+        } else {
+            s.dispatch(Command::Load {
+                layer: 11,
+                graphic_url: "u".into(),
+                data: None,
+                cued: false,
+            })
+        }
+        .unwrap();
+        let a = &actions(&out)[0];
+        let slot =
+            a.ts.slot
+                .clone()
+                .expect("a slot once the output clock is known");
+        assert_eq!(slot.epoch, epoch.to_string());
+        // The first deadline after issue: T_k is after `before`, T_(k-1) is not after the call.
+        assert!(noplayout_frames::clock::t_k(epoch, slot.k, rate) > before);
+        assert!(
+            slot.k == 0
+                || noplayout_frames::clock::t_k(epoch, slot.k - 1, rate)
+                    <= noplayout_frames::clock::mono_ns()
+        );
+        if let Some((seq, k)) = last {
+            assert!(
+                a.seq > seq && slot.k >= k,
+                "slot.k never goes back in seq order"
+            );
+        }
+        last = Some((a.seq, slot.k));
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert!(last.unwrap().1 >= 5, "120 ms of issues cross several slots");
+}

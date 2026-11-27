@@ -67,3 +67,4 @@ ADRs 0001–0059 were backfilled in M0 from `DECISIONS.md` E-001…E-059 at 561e
 | [0059](0059-load-frontier-for-checkpoint-declaring-graphics.md) | Load frontier: exact timestamped full replay before the first checkpoint and as the last fallback (`replayed-timed`) | accepted | 2026-11-26 |
 | [0060](0060-immutable-ograf-package-library.md) | Immutable OGraf package snapshots and offline import boundaries | proposed | 2026-11-27 |
 | [0061](0061-provisional-drive-mode.md) | Provisional drive mode per OS (S1a): macOS A, Windows/Linux pending | draft | 2026-11-27 |
+| [0062](0062-host-bus-commit-rules.md) | Host-bus commit rules: replay never commits, lost renderers resolve as 504, late pages get commands live | accepted | 2026-11-27 |

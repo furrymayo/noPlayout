@@ -161,12 +161,20 @@ debounced 200 ms; reader tolerates a torn last line). Registration (§2.14): pro
 loopback + live incarnation + constant-time token match + single use (else 4403), superseded
 incarnations get 4410 and a kill event; mirror roles register freely (access scope is §2.12,
 M3). Snapshot at `S` and subscription from `S + 1` happen in one actor step; results commit
-in seq order per instance, standby results are held and taken at promotion (barrier `B`),
-mirror disagreements count as `mirror_divergence`, stale generations are dropped. `TimeSync`
+in seq order per instance, standby results are held and taken at promotion (barrier `B`) and
+pruned as the active commits, mirror disagreements count as `mirror_divergence`, stale
+generations are dropped. Replay results (snapshot journal or checkpoint tail, flagged by the
+page or known to the engine by its snapshot cut) never commit; a status-class mismatch with the
+committed result counts as `replay_divergence` (Health `supervisor.bus`). An authoritative
+renderer lost without a promotion, or a page that misses its deadline (load 12 s, others 7 s),
+commits `504 "renderer lost before result"` in seq order; commands issued before the active
+page registers reach it live after its snapshot (ADR 0062). `TimeSync`
 every 5 s; quiescent checkpoint results trim the snapshot journal to the tail. The engine serves
 `/ws/host/<channel>` and `/host/*` (built `web/host`). Dev CLI: `NOPLAYOUT_UI_TOKEN=… noplayout-engine
 ctl import|load|play|update|stop|custom|dispose|kill-renderer|hang|inspect` over the loopback
-token route. Gaps: `ts.slot` is unset until the output clock exists (task 5, `TODO(M1)`);
+token route. Every action's `ts.slot` is `{k, epoch}` from the output process's `Hello` (the
+first slot whose deadline is after issue); when no output process is up (it failed to start)
+actions carry no `ts.slot`. Gaps:
 `hang` reaches the renderer but the page busy-loop lands with task 4 (`TODO(M1)`); the
 dev show path stands in for M4's show files (`TODO(M4)`).
 

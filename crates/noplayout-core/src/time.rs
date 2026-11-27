@@ -19,6 +19,34 @@ pub struct SlotRef {
     pub epoch: String,
 }
 
+/// A channel's output clock as its output process announced it in `Hello` (§5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlotClock {
+    /// `epoch_mono_ns` on the machine-wide clock (`noplayout_frames::clock::mono_ns`).
+    pub epoch_mono_ns: u64,
+    pub rate: noplayout_frames::clock::Rate,
+}
+
+impl SlotClock {
+    /// The first slot whose deadline `T_k` is after `now_ns`. `epoch` names the output
+    /// process's epoch (its `epoch_mono_ns` in decimal); a respawned output process starts a
+    /// new one (§5.1 item 3).
+    pub fn slot_after(&self, now_ns: u64) -> SlotRef {
+        SlotRef {
+            k: noplayout_frames::clock::k_at_or_after(
+                self.epoch_mono_ns,
+                now_ns.saturating_add(1),
+                self.rate,
+            ),
+            epoch: self.epoch_mono_ns.to_string(),
+        }
+    }
+
+    pub fn slot_now(&self) -> SlotRef {
+        self.slot_after(noplayout_frames::clock::mono_ns())
+    }
+}
+
 /// `ts: {utcUs, mono: {run, us}, slot?: {k, epoch}}` (§4.3).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +137,20 @@ mod tests {
             last = n;
         }
         assert!(t.offset_from_system_us().abs() < 1_000_000);
+    }
+
+    #[test]
+    fn slot_after_is_the_next_deadline_strictly_after_issue() {
+        let c = SlotClock {
+            epoch_mono_ns: 1_000,
+            rate: noplayout_frames::clock::Rate::P5994,
+        };
+        let t1 = noplayout_frames::clock::t_k(1_000, 1, c.rate);
+        assert_eq!(c.slot_after(0).k, 0);
+        assert_eq!(c.slot_after(1_000).k, 1, "T_0 is not after its own instant");
+        assert_eq!(c.slot_after(t1 - 1).k, 1);
+        assert_eq!(c.slot_after(t1).k, 2);
+        assert_eq!(c.slot_after(t1).epoch, "1000");
     }
 
     #[test]

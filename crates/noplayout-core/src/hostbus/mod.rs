@@ -59,6 +59,7 @@ enum Msg {
     RemoveIncarnation(u64),
     Promote(u64),
     Checkpoint(String),
+    SlotClock(Option<crate::time::SlotClock>),
     Inspect(oneshot::Sender<ChannelView>),
 }
 
@@ -115,6 +116,11 @@ impl ChannelHandle {
     }
     pub async fn request_checkpoint(&self, instance_id: String) {
         let _ = self.tx.send(Msg::Checkpoint(instance_id)).await;
+    }
+    /// The channel's output clock, so every action's `ts` carries `slot` (§4.3); `None`
+    /// while no output process is up.
+    pub async fn set_slot_clock(&self, clock: Option<crate::time::SlotClock>) {
+        let _ = self.tx.send(Msg::SlotClock(clock)).await;
     }
     pub async fn inspect(&self) -> Result<ChannelView, BusError> {
         self.ask(Msg::Inspect).await
@@ -317,6 +323,7 @@ impl Actor {
                 let out = self.state.request_checkpoint(&id);
                 self.apply(out);
             }
+            Msg::SlotClock(c) => self.state.set_slot_clock(c),
             Msg::Inspect(reply) => {
                 let _ = reply.send(ChannelView {
                     last_seq: self.state.last_seq(),

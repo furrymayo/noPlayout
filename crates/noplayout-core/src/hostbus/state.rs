@@ -4,7 +4,7 @@
 //! subscribed from `S + 1` in the same step).
 
 use super::wire::*;
-use crate::time::{TimeSource, Ts};
+use crate::time::{SlotClock, TimeSource, Ts};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -260,6 +260,7 @@ pub struct ChannelState {
     live_from: Option<u64>,
     backlog: Vec<Action>,
     deadlines: BTreeMap<u64, Deadline>,
+    slot_clock: Option<SlotClock>,
     pub counters: Counters,
 }
 
@@ -295,6 +296,7 @@ impl ChannelState {
             live_from: None,
             backlog: Vec::new(),
             deadlines: BTreeMap::new(),
+            slot_clock: None,
             counters: Counters::default(),
         }
     }
@@ -313,6 +315,19 @@ impl ChannelState {
     }
     pub fn now(&self) -> Ts {
         self.time.now()
+    }
+
+    /// The channel's output clock (from the output process's `Hello`); `None` while no output
+    /// process is up, and then actions carry no `ts.slot` (§4.3).
+    pub fn set_slot_clock(&mut self, clock: Option<SlotClock>) {
+        self.slot_clock = clock;
+    }
+
+    /// An action's `ts`: engine time plus, with an output clock, the next slot after issue.
+    fn stamp(&self) -> Ts {
+        let mut ts = self.time.now();
+        ts.slot = self.slot_clock.map(|c| c.slot_now());
+        ts
     }
 
     pub fn instances(&self) -> Vec<InstanceView> {
@@ -745,7 +760,7 @@ impl ChannelState {
                 self.next_generation += 1;
                 let data = data.unwrap_or_else(|| json!({}));
                 let seq = self.last_seq + 1;
-                let ts = self.time.now();
+                let ts = self.stamp();
                 self.instances.insert(
                     id.clone(),
                     Inst {
@@ -853,7 +868,7 @@ impl ChannelState {
         let ts = if method == Method::Load {
             self.instances[&id].load_ts.clone()
         } else {
-            self.time.now()
+            self.stamp()
         };
         let inst = self.instances.get_mut(&id).expect("target resolved above");
         let generation = inst.generation;

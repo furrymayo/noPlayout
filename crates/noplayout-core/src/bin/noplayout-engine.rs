@@ -221,10 +221,25 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     .await
     .ok()
     .map(Arc::new);
+    let format = noplayout_core::program::format_from_env();
     let epoch_mono_ns = match output.as_ref().map(|o| &o.hello) {
-        Some(noplayout_proto::Hello::Output(h)) => h.epoch.mono_ns,
+        Some(noplayout_proto::Hello::Output(h)) => {
+            // Every action's ts.slot names the output slot after it (§4.3).
+            if let Some(ch) = bus.channel(channel) {
+                ch.set_slot_clock(Some(noplayout_core::time::SlotClock {
+                    epoch_mono_ns: h.epoch.mono_ns,
+                    rate: noplayout_frames::clock::Rate {
+                        num: format.rate_num,
+                        den: format.rate_den,
+                    },
+                }))
+                .await;
+            }
+            h.epoch.mono_ns
+        }
         // TODO(M1): without an output process (it failed to start) the renderers pace from the
-        // engine's own clock; K5/K6 output restarts are not in M1 (STATUS.md).
+        // engine's own clock and actions carry no ts.slot; K5/K6 output restarts are not in M1
+        // (STATUS.md).
         _ => noplayout_frames::clock::mono_ns(),
     };
     let mut output_events = output.as_ref().and_then(|o| o.take_events());
@@ -234,7 +249,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
             run: run_id,
             port: bound.port(),
             data: data.clone(),
-            format: noplayout_core::program::format_from_env(),
+            format,
             mode: noplayout_core::program::drive_mode_from_env(),
             epoch_mono_ns,
             bus: bus.clone(),
