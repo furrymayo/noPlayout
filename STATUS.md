@@ -20,7 +20,7 @@ library import API, not a new upload endpoint or UI; M1 task 3 can call it from 
   traversal and staging rejection. Import tests validate all nine upstream examples and six
   Basketball graphics. These are import/serving checks, not CEF runtime conformance evidence.
 
-Still pending: M1 tasks 3–10 (host protocol/CLI, paint ring, output clock, oracle,
+Still pending: M1 tasks 4–10 (paint ring, output clock, oracle,
 spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
@@ -37,6 +37,22 @@ estimate, snapshot/journal replay with original `ts`, quiescent `v_noplayout` ch
 Built to `dist/host/{renderer.html,ograf-host.js}`; vitest runs it against misbehaving fake
 graphics (never-resolving load, throws, out-of-order resolution). Not yet in it: the test-build
 frame-oracle overlay (task 6, `TODO(M1)`), fill/key presentation (M3).
+
+Task 3 (`noplayout_core::hostbus`, `time`, `ctl`): one actor per channel owns the sequenced
+state. Every `Action` carries `ts{utcUs, mono}` from one engine `TimeSource` (non-stepping UTC);
+the journal (§2.13.2) is uncapped, appended to `shows/dev.onair.jsonl` (flush per line, fsync
+debounced 200 ms; reader tolerates a torn last line). Registration (§2.14): program pages need
+loopback + live incarnation + constant-time token match + single use (else 4403), superseded
+incarnations get 4410 and a kill event; mirror roles register freely (access scope is §2.12,
+M3). Snapshot at `S` and subscription from `S + 1` happen in one actor step; results commit
+in seq order per instance, standby results are held and taken at promotion (barrier `B`),
+mirror disagreements count as `mirror_divergence`, stale generations are dropped. `TimeSync`
+every 5 s; quiescent checkpoint results trim the snapshot journal to the tail. The engine serves
+`/ws/host/<channel>` and `/host/*` (built `web/host`). Dev CLI: `NOPLAYOUT_UI_TOKEN=… noplayout-engine
+ctl import|load|play|update|stop|custom|dispose|kill-renderer|hang|inspect` over the loopback
+token route. Gaps: `ts.slot` is unset until the output clock exists (task 5, `TODO(M1)`);
+`hang` reaches the renderer but the page busy-loop lands with task 4 (`TODO(M1)`); the
+dev show path stands in for M4's show files (`TODO(M4)`).
 
 Deliberate task-1 boundaries: engine-owned storage must not be edited externally; no global
 concurrent-request memory cap, package GC, crash-left staging cleanup or power-loss durability

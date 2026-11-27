@@ -87,6 +87,9 @@ fn run(started: Instant) -> Result<ExitCode, String> {
                     eprintln!("noplayout-output: pong failed: {e}");
                 }
             }
+            Ok(Down::HangPage { .. }) => {
+                eprintln!("noplayout-output: HangPage is a renderer message; ignored");
+            }
             Ok(Down::Shutdown) => {
                 eprintln!("noplayout-output: channel {channel} shutting down");
                 return Ok(ExitCode::SUCCESS);

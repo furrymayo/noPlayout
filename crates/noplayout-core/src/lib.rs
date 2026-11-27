@@ -7,13 +7,16 @@
 
 pub mod children;
 pub mod client;
+pub mod ctl;
 pub mod health;
+pub mod hostbus;
 pub mod http;
 pub mod instance;
 pub mod library;
 pub mod logging;
 pub mod paths;
 pub mod selftest;
+pub mod time;
 
 /// Default HTTP port (IDEA §4.2: web output port, default 8686).
 pub const DEFAULT_PORT: u16 = 8686;

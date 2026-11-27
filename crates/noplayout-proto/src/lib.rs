@@ -37,6 +37,8 @@ pub enum Down {
     Ping { seq: u64 },
     /// Close everything and exit with status 0.
     Shutdown,
+    /// Fault injection K3 (dev `ctl hang`, S7a): block the program page's main thread for `ms`.
+    HangPage { ms: u32 },
 }
 
 /// Messages from a child process to the engine.

@@ -18,19 +18,24 @@ use tokio::sync::Notify;
 /// Exit status when another engine holds the lock.
 const EXIT_ALREADY_RUNNING: u8 = 3;
 
-const USAGE: &str = "usage: noplayout-engine [--port N] | --self-test | --version";
+const USAGE: &str =
+    "usage: noplayout-engine [--port N] | --self-test | --version | ctl <op> … (ctl --help)";
 
 #[derive(Debug)]
 enum Mode {
     Run { port: u16 },
     SelfTest,
     Version,
+    Ctl(Vec<String>),
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Mode, String> {
     let mut port = DEFAULT_PORT;
     let mut self_test = false;
-    let mut it = args.into_iter();
+    let mut it = args.into_iter().peekable();
+    if it.peek().is_some_and(|a| a == "ctl") {
+        return Ok(Mode::Ctl(it.skip(1).collect()));
+    }
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--self-test" => self_test = true,
@@ -69,6 +74,7 @@ fn main() -> ExitCode {
         }
     };
     match mode {
+        Mode::Ctl(args) => ctl(&args),
         Mode::Version => {
             println!("noplayout-engine {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -82,6 +88,34 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+    }
+}
+
+/// `noplayout-engine ctl …`: one dev-control request to a running engine (M1 task 3).
+fn ctl(args: &[String]) -> ExitCode {
+    let (port, req) = match noplayout_core::ctl::parse(args) {
+        Ok(r) => r,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(token) = std::env::var(ENV_UI_TOKEN).ok().filter(|t| !t.is_empty()) else {
+        eprintln!(
+            "noplayout-engine ctl: set {ENV_UI_TOKEN} to the token the engine was started with"
+        );
+        return ExitCode::from(2);
+    };
+    let port = port.unwrap_or(DEFAULT_PORT);
+    match noplayout_core::client::post_ctl(port, &token, &req, std::time::Duration::from_secs(20)) {
+        Ok(body) => {
+            println!("{}", body.trim());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("noplayout-engine ctl: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -143,6 +177,16 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
 
     let health = HealthState::new();
     let stop = Arc::new(Notify::new());
+    let channel = "1";
+    let time = noplayout_core::time::TimeSource::new();
+    // TODO(M4): shows/<show-id>.onair.jsonl per open show; M1 journals the dev show. Lines are
+    // flushed per record and fsynced on a 200 ms debounce by the writer thread.
+    let (onair, _onair_thread) =
+        noplayout_core::hostbus::onair::OnAirLog::open(data.join("shows").join("dev.onair.jsonl"))?;
+    let (bus_events, mut bus_rx) = tokio::sync::mpsc::unbounded_channel();
+    let bus =
+        noplayout_core::hostbus::HostBus::start(&[channel], time, Some(onair), Some(bus_events));
+    let (faults, mut fault_rx) = tokio::sync::mpsc::unbounded_channel();
     let state = Arc::new(ApiState {
         library: Some(noplayout_core::library::Library::open(
             data.join("library"),
@@ -150,12 +194,14 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
         health: health.clone(),
         ui_token: std::env::var(ENV_UI_TOKEN).ok().filter(|t| !t.is_empty()),
         shutdown: stop.clone(),
+        hostbus: Some(bus.clone()),
+        host_dir: paths::host_dir(),
+        faults: Some(faults),
     });
     let server_stop = Arc::new(Notify::new());
     let server = tokio::spawn(http::serve(listener, state, server_stop.clone()));
 
     // One channel in M0, spawn order per PLAN §4.2: output process first, then the renderer.
-    let channel = "1";
     let output = children::launch(
         Launch {
             kind: Kind::Output,
@@ -185,10 +231,29 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     .await
     .ok();
 
-    tokio::select! {
-        _ = stop.notified() => tracing::info!("stopping: API request"),
-        signal = terminate_signal() => tracing::info!("stopping: {signal}"),
+    // Dev-control faults and bus events. TODO(M1): task 8's supervisor owns these (standby,
+    // promotion, rebuild); until then a fault acts on the single renderer directly.
+    let term = terminate_signal();
+    tokio::pin!(term);
+    loop {
+        tokio::select! {
+            _ = stop.notified() => { tracing::info!("stopping: API request"); break; }
+            signal = &mut term => { tracing::info!("stopping: {signal}"); break; }
+            Some(f) = fault_rx.recv() => match (f, &renderer) {
+                (noplayout_core::ctl::Fault::KillRenderer { .. }, Some(r)) => {
+                    if let Err(e) = r.kill().await { tracing::warn!("kill-renderer: {e}"); }
+                }
+                (noplayout_core::ctl::Fault::Hang { ms, .. }, Some(r)) => {
+                    if let Err(e) = r.send(noplayout_proto::Down::HangPage { ms }).await {
+                        tracing::warn!("hang: {e}");
+                    }
+                }
+                (f, None) => tracing::warn!(?f, "fault ignored: no renderer"),
+            },
+            Some(ev) = bus_rx.recv() => tracing::warn!(?ev, "bus event (no supervisor yet)"),
+        }
     }
+    drop(bus);
 
     for child in [renderer, output].into_iter().flatten() {
         match child.shutdown().await {

@@ -163,6 +163,10 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 }
             }
             Ok(Inbox::Down(Down::Shutdown)) => break ExitCode::SUCCESS,
+            Ok(Inbox::Down(Down::HangPage { ms })) => {
+                // TODO(M1): task 4 runs a busy loop in the program page via execute_java_script.
+                eprintln!("noplayout-renderer: hang {ms} ms requested; no program page yet");
+            }
             Ok(Inbox::Closed(why)) => {
                 eprintln!(
                     "noplayout-renderer: control socket closed ({why}); shutting down in {} s",

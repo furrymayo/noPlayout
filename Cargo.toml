@@ -63,6 +63,9 @@ tokio = { version = "=1.54.1", features = ["rt-multi-thread", "net", "time", "sy
 tokio-util = { version = "=0.7.20", features = ["codec"] }
 interprocess = { version = "=2.4.10" }
 postcard = { version = "=1.2.0", default-features = false, features = ["use-std"] }
+# Test-only WebSocket client for the host protocol (already in the graph via axum's `ws`).
+tokio-tungstenite = { version = "=0.29.0", default-features = false, features = ["connect"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink"] }
 
 # Data
 serde = { version = "=1.0.229", features = ["derive"] }

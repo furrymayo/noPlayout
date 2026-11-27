@@ -98,6 +98,10 @@ pub enum LaunchError {
 enum Cmd {
     Ping(oneshot::Sender<Pong>),
     Shutdown(oneshot::Sender<Result<ExitStatus, String>>),
+    /// SIGKILL / TerminateProcess, no grace (fault injection K1, superseded renderers).
+    Kill,
+    /// Forward one control message.
+    Send(Down),
 }
 
 /// A running child that has said `Hello`.
@@ -121,6 +125,22 @@ impl ChildHandle {
             .await
             .map_err(|_| format!("the {} did not answer a ping", self.kind.label()))?
             .map_err(|_| format!("the {} went away during a ping", self.kind.label()))
+    }
+
+    /// Kill the process without a grace period; the supervisor then reports it failed.
+    pub async fn kill(&self) -> Result<(), String> {
+        self.cmd
+            .send(Cmd::Kill)
+            .await
+            .map_err(|_| format!("the {} had already stopped", self.kind.label()))
+    }
+
+    /// Send one control message.
+    pub async fn send(&self, msg: Down) -> Result<(), String> {
+        self.cmd
+            .send(Cmd::Send(msg))
+            .await
+            .map_err(|_| format!("the {} is no longer connected", self.kind.label()))
     }
 
     /// Send `Shutdown` and wait for the process to exit (killed after a grace period).
@@ -351,6 +371,17 @@ async fn supervise(
                     waiting = Some((seq, reply));
                     if let Err(e) = write_down(&stream, &Down::Ping { seq }).await {
                         tracing::warn!(kind = label, "ping failed: {e}");
+                    }
+                }
+                Some(Cmd::Kill) => {
+                    tracing::warn!(kind = label, "killing (no grace)");
+                    if let Err(e) = process.start_kill() {
+                        tracing::warn!(kind = label, "kill failed: {e}");
+                    }
+                }
+                Some(Cmd::Send(msg)) => {
+                    if let Err(e) = write_down(&stream, &msg).await {
+                        tracing::warn!(kind = label, "send failed: {e}");
                     }
                 }
                 Some(Cmd::Shutdown(reply)) => {

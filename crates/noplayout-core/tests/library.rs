@@ -45,6 +45,9 @@ async fn actual_http_routes_serve_manifest_modules_and_assets_but_not_escapes() 
         ui_token: None,
         shutdown: stop.clone(),
         library: Some(library),
+        hostbus: None,
+        host_dir: None,
+        faults: None,
     });
     let server = tokio::spawn(http::serve(listener, state, stop.clone()));
     for (path, mime) in [
