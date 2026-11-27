@@ -99,6 +99,8 @@ impl Stats {
 pub struct Pacer {
     pub control: Arc<Control>,
     pub stats: Arc<Stats>,
+    /// Read by the oracle tests (§5.5: counters agree with the oracle).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub counters: Arc<Counters>,
     pub lanes: Vec<(Plane, Arc<Lane>)>,
 }
