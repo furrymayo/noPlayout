@@ -31,7 +31,7 @@ export type HostDown = Snapshot | Action | { type: 'TimeSync'; serverNow: Timest
   | { type: 'Checkpoint'; instanceId: string; generation: number };
 export type HostUp =
   | { type: 'Register'; channel: string; role: Role; hostVersion: string; lastSeq?: number; inc?: number; token?: string }
-  | { type: 'Result'; seq: number; instanceId: string; generation: number; statusCode: number; statusMessage?: string; currentStep?: number; payload?: unknown }
+  | { type: 'Result'; seq: number; instanceId: string; generation: number; statusCode: number; statusMessage?: string; currentStep?: number; payload?: unknown; replay?: true }
   | { type: 'Beat'; n: number; rafCount: number; lagMs: number; lastAppliedSeq: number }
   | { type: 'Synced'; seq: number }
   | { type: 'PageError'; text: string }

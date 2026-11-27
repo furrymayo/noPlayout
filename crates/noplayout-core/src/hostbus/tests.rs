@@ -41,7 +41,17 @@ fn result(d: &Dispatched, seq: u64, step: Option<u64>) -> HostUp {
         status_message: None,
         current_step: step,
         payload: None,
+        replay: false,
     })
+}
+
+fn replayed(d: &Dispatched, seq: u64, status_code: u16) -> HostUp {
+    let HostUp::Result(mut r) = result(d, seq, None) else {
+        unreachable!()
+    };
+    r.status_code = status_code;
+    r.replay = true;
+    HostUp::Result(r)
 }
 
 fn play(s: &mut ChannelState, layer: u32) -> u64 {
@@ -227,6 +237,57 @@ fn mirror_disagreement_is_counted() {
     s.page(1, result(&d, p, Some(2)));
     s.page(3, result(&d, p, Some(1)));
     assert_eq!(s.counters.mirror_divergence, 1);
+}
+
+#[test]
+fn replay_results_never_commit_and_class_mismatch_is_replay_divergence() {
+    let mut s = ch();
+    active(&mut s, 1);
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    let p = play(&mut s, 10);
+    // The page marks it replay: the pending seq stays pending, nothing reaches a caller.
+    let out = s.page(1, replayed(&d, p, 200));
+    assert!(out.results.is_empty() && out.log.is_empty());
+    assert_eq!(s.instances()[0].pending, 1);
+    s.page(1, result(&d, p, Some(0)));
+    assert_eq!(s.instances()[0].current_step, Some(0));
+    // Same class: no divergence. A different class: replay_divergence, not mirror.
+    s.page(1, replayed(&d, p, 204));
+    assert_eq!(s.counters.replay_divergence, 0);
+    s.page(1, replayed(&d, p, 500));
+    assert_eq!(s.counters.replay_divergence, 1);
+    assert_eq!(s.counters.mirror_divergence, 0);
+}
+
+#[test]
+fn engine_classifies_snapshot_seqs_as_replay_even_if_the_page_does_not() {
+    let mut s = ch();
+    active(&mut s, 1);
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    let p = play(&mut s, 10);
+    // A standby registers after `p`: its snapshot journal carries `p` as replay.
+    let b = s.new_incarnation("tb".into());
+    s.register(2, true, &reg(Role::Program, Some(b), Some("tb")))
+        .unwrap();
+    // Unflagged, but the engine fed it as replay: not held for promotion.
+    s.page(2, result(&d, p, Some(0)));
+    s.page(1, result(&d, p, Some(0)));
+    let HostUp::Result(mut bad) = result(&d, p, None) else {
+        unreachable!()
+    };
+    bad.status_code = 500;
+    s.page(2, HostUp::Result(bad));
+    assert_eq!(
+        (s.counters.replay_divergence, s.counters.mirror_divergence),
+        (1, 0)
+    );
+    // A live seq after the snapshot is still held and compared as a mirror.
+    let p2 = play(&mut s, 10);
+    s.page(2, result(&d, p2, Some(1)));
+    s.page(1, result(&d, p2, Some(1)));
+    assert_eq!(s.counters.mirror_divergence, 0);
 }
 
 #[test]

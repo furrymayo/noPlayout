@@ -123,8 +123,10 @@ export class HostRuntime {
     this.completed.add(seq);
     while (this.completed.delete(this.appliedSeq + 1)) this.appliedSeq++;
   }
-  private result(a: Action, outcome: Outcome): void {
-    this.adapters.send({ type: 'Result', seq: a.seq, instanceId: a.instanceId, generation: a.generation, ...outcome });
+  // Replay results (snapshot journal or checkpoint tail) are marked; the engine never commits them (§2.14).
+  private result(a: Action, outcome: Outcome, replay: boolean): void {
+    this.adapters.send({ type: 'Result', seq: a.seq, instanceId: a.instanceId, generation: a.generation, ...outcome,
+      ...(replay ? { replay: true as const } : {}) });
   }
   private make(id: string, generation: number, p: LoadParams, ts: Timestamp, replay: boolean): Instance {
     const prior = this.instances.get(id);
@@ -160,7 +162,7 @@ export class HostRuntime {
     if (a.method === 'load') i = this.make(a.instanceId, a.generation, a.params as LoadParams, a.ts, replay);
     if (!i?.alive || i.generation !== a.generation) {
       const outcome = failure(410, 'Instance generation is no longer present');
-      this.result(a, outcome); this.complete(a.seq); return Promise.resolve(outcome);
+      this.result(a, outcome, replay); this.complete(a.seq); return Promise.resolve(outcome);
     }
     const instance = i;
     instance.pending.add(a.seq);
@@ -189,7 +191,7 @@ export class HostRuntime {
           if (a.method === 'playAction') { instance.currentStep = outcome.currentStep; instance.atEnd = outcome.currentStep === undefined; }
           if (a.method === 'stopAction') { instance.currentStep = undefined; instance.atEnd = true; }
         }
-        this.result(a, outcome);
+        this.result(a, outcome, replay);
         this.checkpoint(instance);
       }
       return outcome;

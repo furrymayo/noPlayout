@@ -117,6 +117,10 @@ pub struct PageResult {
     pub current_step: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
+    /// The page ran this action from a `Snapshot` journal or checkpoint tail (§2.14). The engine
+    /// also classifies by how it fed the page; either side saying replay makes it a replay.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replay: bool,
 }
 
 impl PageResult {

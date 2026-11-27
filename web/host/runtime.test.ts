@@ -142,6 +142,10 @@ describe('snapshot handoff and time', () => {
       v_noplayout: expect.objectContaining({ ts: ts(204), replay: false }) }));
     expect(sent.at(-1)).toEqual({ type: 'Synced', seq: 204 });
     host.receive(action(204, 'customAction')); await flush(); expect(graphic.customAction).toHaveBeenCalledTimes(200);
+    // Snapshot journal results carry replay: true; live results never do (§2.14).
+    const results = sent.filter((m) => m.type === 'Result');
+    expect(results.filter((m) => m.replay).map((m) => m.seq)).toEqual([2, 4]);
+    expect(results.filter((m) => m.seq >= 5).every((m) => m.replay === undefined)).toBe(true);
   });
   it('starts cross-layer snapshot journal calls in channel seq order, regardless of load completion order', async () => {
     const slow = deferred<{ statusCode: number }>(); const started: number[] = [];

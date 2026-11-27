@@ -99,6 +99,8 @@ pub enum Phase {
 struct Entry {
     entry: JournalEntry,
     result: Option<PageResult>,
+    /// The committed result was made by the engine (renderer lost, deadline), not the graphic.
+    synthetic: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +134,9 @@ struct Conn {
     beat_at: std::time::Instant,
     /// A standby program page's results for still-pending seqs, used at promotion (§2.14).
     held: BTreeMap<u64, PageResult>,
+    /// The `Snapshot` cut this connection was fed: every `seq ≤ replay_upto` reached it as
+    /// replay (snapshot journal or checkpoint tail), every later one as a live `Action`.
+    replay_upto: u64,
 }
 
 #[derive(Debug)]
@@ -200,6 +205,8 @@ pub enum OnAirRecord {
 #[serde(rename_all = "camelCase")]
 pub struct Counters {
     pub mirror_divergence: u64,
+    /// A replay result whose status class differs from the committed original (§2.13.2).
+    pub replay_divergence: u64,
     pub dropped_results: u64,
     pub refused_registrations: u64,
 }
@@ -419,6 +426,7 @@ impl ChannelState {
             }
             inc = Some(i);
         }
+        let snapshot = self.snapshot();
         self.conns.insert(
             conn,
             Conn {
@@ -428,9 +436,10 @@ impl ChannelState {
                 last_beat: None,
                 beat_at: std::time::Instant::now(),
                 held: BTreeMap::new(),
+                replay_upto: snapshot.last_seq,
             },
         );
-        Ok(self.snapshot())
+        Ok(snapshot)
     }
 
     /// A refused superseded program page: the engine kills that process if it is alive.
@@ -706,6 +715,7 @@ impl ChannelState {
                 inst.journal.push(Entry {
                     entry: entry.clone(),
                     result: None,
+                    synthetic: false,
                 });
                 out.log.push(OnAirRecord::Action {
                     channel: self.channel.clone(),
@@ -814,7 +824,16 @@ impl ChannelState {
                 }
             }
             HostUp::Result(r) => {
-                if authoritative {
+                // Replay if the page says so or if the engine fed it this seq as replay.
+                let replay = r.replay
+                    || self
+                        .conns
+                        .get(&conn)
+                        .is_some_and(|c| r.seq <= c.replay_upto);
+                if replay {
+                    // Replay results never commit; they are only compared (§2.14, §2.13.2).
+                    self.compare_replay(&r);
+                } else if authoritative {
                     self.commit(r, &mut out);
                 } else if role == Role::Program {
                     // Standby: keep results for pending seqs, for promotion; compare otherwise.
@@ -838,13 +857,28 @@ impl ChannelState {
         out
     }
 
-    fn compare_mirror(&mut self, r: &PageResult) {
-        let committed = self
-            .instances
+    fn committed(&self, r: &PageResult) -> Option<&Entry> {
+        self.instances
             .get(&r.instance_id)
             .filter(|i| i.generation == r.generation)
             .and_then(|i| i.journal.iter().find(|e| e.entry.seq == r.seq))
-            .and_then(|e| e.result.as_ref());
+            .filter(|e| e.result.is_some())
+    }
+
+    /// A replay result against the journal's committed result: a status-class mismatch is a
+    /// `replay_divergence`. An engine-synthesised result (renderer lost, deadline) is not the
+    /// graphic's answer, so there is nothing to compare it with.
+    fn compare_replay(&mut self, r: &PageResult) {
+        if let Some(e) = self.committed(r)
+            && !e.synthetic
+            && e.result.as_ref().is_some_and(|c| c.class() != r.class())
+        {
+            self.counters.replay_divergence += 1;
+        }
+    }
+
+    fn compare_mirror(&mut self, r: &PageResult) {
+        let committed = self.committed(r).and_then(|e| e.result.as_ref());
         if let Some(c) = committed
             && (c.class() != r.class() || c.current_step != r.current_step)
         {

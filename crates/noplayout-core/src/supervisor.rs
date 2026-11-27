@@ -85,6 +85,9 @@ pub struct View {
     /// "Renderer can't draw": the loop guard gave up; the output holds the last frame.
     pub red: bool,
     pub records: Vec<Record>,
+    /// The channel's host-bus counters (`mirrorDivergence`, `replayDivergence`, …; §2.13.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bus: Option<crate::hostbus::state::Counters>,
 }
 
 pub type SharedView = Arc<Mutex<View>>;
@@ -634,6 +637,7 @@ impl Supervisor {
             self.start_standby();
         }
         let ready = self.standby_ready().await;
+        let bus = self.channel_view().await.ok().map(|v| v.counters);
         let read = |h: &Arc<RwLock<ChildHealth>>| h.read().map(|g| g.clone()).ok();
         self.health.publish_renderers(
             self.active.as_ref().and_then(|r| read(&r.health)),
@@ -645,6 +649,7 @@ impl Supervisor {
         v.standby_inc = self.standby.as_ref().map(|r| r.inc);
         v.standby_pid = self.standby.as_ref().and_then(|r| r.handle.pid);
         v.standby_ready = ready;
+        v.bus = bus;
         if let Ok(json) = serde_json::to_value(&*v) {
             self.health.publish_supervisor(json);
         }
