@@ -30,6 +30,9 @@ struct Virtual {
     now: Mutex<u64>,
     painter: Mutex<Painter>,
     lanes: OnceLock<Vec<Arc<Lane>>>,
+    /// Only the Block injection leaves a lane in `submit`; otherwise always wait for the sinks
+    /// (a slow runner's disk must not turn into a dropped slot).
+    block_injected: bool,
 }
 
 impl pacer::Clock for Virtual {
@@ -46,7 +49,10 @@ impl pacer::Clock for Virtual {
             while Instant::now() < until
                 && !lanes.iter().all(|l| {
                     let since = l.in_flight_since.load(Ordering::Acquire);
-                    l.is_idle() || (since != 0 && clock::mono_ns() - since > 100_000_000)
+                    l.is_idle()
+                        || (self.block_injected
+                            && since != 0
+                            && clock::mono_ns() - since > 100_000_000)
                 })
             {
                 std::thread::sleep(Duration::from_micros(200));
@@ -95,6 +101,13 @@ fn dump_run(
             frozen_s: 0,
         }),
         lanes: OnceLock::new(),
+        block_injected: matches!(
+            fault,
+            Some(Fault {
+                kind: Kind::Block(..),
+                ..
+            })
+        ),
     });
     let crops = layout::crops(W, H);
     let sinks: Vec<(Plane, Box<dyn FrameSink>)> = [Plane::Fill, Plane::Key]
