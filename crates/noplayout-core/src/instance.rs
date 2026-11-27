@@ -2,18 +2,19 @@
 //!
 //! The lock is an OS advisory lock on `engine.lock` (`flock` on Unix, `LockFileEx` on Windows,
 //! via `std::fs::File::try_lock`). The OS drops it when the process dies, so a crashed engine
-//! never leaves a stale lock behind. The file also records the holder's pid and port for
-//! diagnostics only; nothing trusts that text.
+//! never leaves a stale lock behind. The holder's pid and port go in a separate file,
+//! `engine.holder`, for diagnostics only; nothing trusts that text. (It can't live in the lock
+//! file itself: Windows locks are mandatory, so a second engine couldn't read it.)
 
 use std::fs::{File, OpenOptions, TryLockError};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Held for the life of the engine; dropping it releases the lock.
 #[derive(Debug)]
 pub struct InstanceLock {
-    file: File,
+    _file: File,
     path: PathBuf,
+    holder: PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -35,12 +36,12 @@ impl InstanceLock {
     /// Take the lock in `data_dir`, creating the directory if needed.
     pub fn acquire(data_dir: &Path) -> Result<Self, LockError> {
         let path = data_dir.join("engine.lock");
+        let holder = data_dir.join("engine.holder");
         let io_err = |source| LockError::Io {
             path: path.clone(),
             source,
         };
         std::fs::create_dir_all(data_dir).map_err(io_err)?;
-        // Not truncated on open: the holder's text must survive a second engine's attempt.
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -49,9 +50,13 @@ impl InstanceLock {
             .open(&path)
             .map_err(io_err)?;
         match file.try_lock() {
-            Ok(()) => Ok(Self { file, path }),
+            Ok(()) => Ok(Self {
+                _file: file,
+                path,
+                holder,
+            }),
             Err(TryLockError::WouldBlock) => {
-                let holder = std::fs::read_to_string(&path)
+                let holder = std::fs::read_to_string(&holder)
                     .ok()
                     .map(|s| s.trim().to_owned())
                     .filter(|s| !s.is_empty())
@@ -65,10 +70,8 @@ impl InstanceLock {
 
     /// Record who holds the lock (pid and HTTP port), for the "already running" message.
     pub fn record(&mut self, port: u16) -> std::io::Result<()> {
-        self.file.set_len(0)?;
         let text = format!("pid {} port {port}\n", std::process::id());
-        (&self.file).write_all(text.as_bytes())?;
-        self.file.sync_data()
+        std::fs::write(&self.holder, text)
     }
 
     pub fn path(&self) -> &Path {
