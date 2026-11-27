@@ -13,6 +13,7 @@
 // TODO(M2): NdiSink behind the same lanes; Fill+Alpha single-plane mode. (STATUS.md)
 // TODO(M1): monitor tap and divergence threads (§2.4a) come with the supervisor (task 8).
 
+mod bench;
 mod fault;
 mod pacer;
 mod sink;
@@ -58,6 +59,9 @@ fn parse_options(args: &[String], env: impl Fn(&str) -> Option<String>) -> Resul
         frames: None,
         crop: Vec::new(),
     };
+    if let Some(r) = env("NOPLAYOUT_RATE") {
+        o.rate = parse_rate(&r)?;
+    }
     if let Some(n) = env("NOPLAYOUT_DUMP_FRAMES") {
         o.frames = Some(
             n.parse()
@@ -115,6 +119,14 @@ fn epoch() -> Epoch {
 
 fn run() -> Result<ExitCode, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "--bench-timer") {
+        println!("{}", bench::timer());
+        return Ok(ExitCode::SUCCESS);
+    }
+    if args.first().is_some_and(|a| a == "--bench-s2") {
+        println!("{}", bench::run(120)?);
+        return Ok(ExitCode::SUCCESS);
+    }
     let opts = parse_options(&args, |k| std::env::var(k).ok())?;
     let fault = fault::from_env()?;
     let channel = opts.channel.clone();

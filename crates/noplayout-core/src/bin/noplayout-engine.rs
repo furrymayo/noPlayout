@@ -252,7 +252,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
             channel,
             run: &run_id,
             port: bound.port(),
-            format: noplayout_proto::Format::HD1080P5994,
+            format: noplayout_core::program::format_from_env(),
             mode: noplayout_core::program::drive_mode_from_env(),
             epoch_mono_ns,
             active: true,

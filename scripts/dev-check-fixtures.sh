@@ -1,6 +1,6 @@
 #!/bin/bash
 # Import every own fixture through the engine's library validation and load each once in the
-# real CEF renderer. Usage: scripts/dev-check-fixtures.sh  (logs under $TMPDIR/np-fixtures)
+# real CEF renderer. Usage: scripts/dev-check-fixtures.sh [graphic-dir...]  (logs under $TMPDIR/np-fixtures)
 set -u
 cd "$(dirname "$0")/.."
 D=${TMPDIR:-/tmp}/np-fixtures
@@ -15,7 +15,7 @@ for _ in $(seq 1 100); do grep -q "program page configured" "$D/engine.log" && b
 ctl() { $E ctl --port "$PORT" "$@"; }
 fail=0
 layer=10
-for g in fixtures/frame-oracle fixtures/recovery-probe/probe-static fixtures/recovery-probe/probe-timed; do
+for g in ${@:-fixtures/frame-oracle fixtures/recovery-probe/probe-static fixtures/recovery-probe/probe-timed}; do
   M=$(ctl import "$g" | sed -n 's/.*"manifestUrl":"\([^"]*\)".*/\1/p')
   if [ -z "$M" ]; then echo "FAIL import $g"; fail=1; continue; fi
   R=$(ctl load "$layer" "$M")

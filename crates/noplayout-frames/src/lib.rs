@@ -11,13 +11,12 @@ pub mod shm;
 pub use ring::{PaintMeta, ReadSlot, Reader, SLOTS, WriteSlot, Writer, ring_bytes, slot_bytes};
 
 /// Ring object name for one renderer incarnation. Short enough for macOS (≤ 30 bytes) and
-/// unique per engine run, channel and incarnation.
+/// unique per engine run, channel and incarnation. The run part is the run id's **last** 10
+/// alphanumerics: a UUIDv7 starts with its timestamp, so its head is shared by every engine
+/// started in the same minute, and two engines on one machine would open each other's ring.
 pub fn ring_name(run: &str, channel: &str, inc: u64) -> String {
-    let run: String = run
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .take(8)
-        .collect();
+    let alnum: Vec<char> = run.chars().filter(char::is_ascii_alphanumeric).collect();
+    let run: String = alnum[alnum.len().saturating_sub(10)..].iter().collect();
     let channel: String = channel
         .chars()
         .filter(char::is_ascii_alphanumeric)

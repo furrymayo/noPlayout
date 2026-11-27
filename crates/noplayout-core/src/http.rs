@@ -112,6 +112,9 @@ fn authorize(
 
 /// How long `ctl` waits for the authoritative page's result (the page itself times out a
 /// `load` at 10 s, §2.5).
+// TODO(M1): a command dispatched before the program page has registered on the bus is lost and
+// the caller sees `"result": null` after this wait; task 8's supervisor gates commands on page
+// readiness (seen in the S2 memory run, STATUS.md).
 const CTL_RESULT_WAIT: std::time::Duration = std::time::Duration::from_secs(12);
 
 async fn ctl(

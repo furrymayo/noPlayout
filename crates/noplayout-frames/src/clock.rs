@@ -100,6 +100,8 @@ mod os {
         // SAFETY: no preconditions; returns early only on interruption.
         unsafe { mach_wait_until(ticks) };
     }
+    // TODO(M1): S1a saw one late pacer wake (9–26 ms) a minute under this QoS class; if the M2
+    // mini shows it too, use THREAD_TIME_CONSTRAINT_POLICY (docs/spikes/S1a-paint-pacing.md).
     pub fn elevate() -> bool {
         const QOS_CLASS_USER_INTERACTIVE: u32 = 0x21;
         // SAFETY: affects only the calling thread.

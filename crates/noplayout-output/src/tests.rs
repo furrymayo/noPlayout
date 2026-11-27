@@ -255,34 +255,3 @@ fn newest_wins_and_partial_pairs_are_counted() {
     assert_eq!(counters.submit_blocked.load(Ordering::Relaxed), 2);
     assert_eq!(counters.pair_partial.load(Ordering::Relaxed), 2);
 }
-
-/// S2 (PLAN §7 M1 task 7): the pacer's one conversion per slot, premultiplied BGRA → FILL +
-/// KEY, at 1080p and 2160p, on a moving-graphic-like mix of opaque, transparent and edge
-/// pixels. Prints one JSON line per size. Run with `--ignored --nocapture` in release.
-#[test]
-#[ignore = "measurement; run explicitly"]
-fn s2_convert_cost() {
-    for (w, h) in [(1920u32, 1080u32), (3840, 2160)] {
-        let mut src = vec![0u8; (w * h * 4) as usize];
-        for (i, px) in src.chunks_mut(4).enumerate() {
-            let a = match i % 7 {
-                0..=2 => 0u8,
-                3..=5 => 255,
-                _ => 128,
-            };
-            px.copy_from_slice(&[a / 2, a / 3, a / 4, a]);
-        }
-        let mut t = Vec::new();
-        for _ in 0..30 {
-            let t0 = std::time::Instant::now();
-            let c = sink::convert(&src, w, h, w * 4);
-            t.push(t0.elapsed().as_secs_f64() * 1e3);
-            std::hint::black_box(c);
-        }
-        t.sort_by(f64::total_cmp);
-        println!(
-            "{{\"spike\":\"S2\",\"what\":\"convert\",\"width\":{w},\"height\":{h},\"p50_ms\":{:.3},\"p95_ms\":{:.3},\"max_ms\":{:.3}}}",
-            t[15], t[28], t[29]
-        );
-    }
-}

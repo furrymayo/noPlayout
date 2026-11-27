@@ -91,7 +91,28 @@ timer (not evidence). `scripts/dev-check-fixtures.sh` imports and loads all thre
 Gap: the 3 s stuck-sink case recycling the output process needs the supervisor (task 8,
 `TODO(M1)`); the output already raises `SenderStuck` at 2 s.
 
-Still pending: M1 tasks 7–10 (spikes, supervisor/recovery, CEF conformance and pixel tests). M1 stays open. Windows/Linux
+Task 7 (spikes S1a, S2): `cargo xtask kit` (macOS) builds
+`target/kit/noplayout-m1-kit-<target>.tar.gz`: release binaries, the renderer bundle, the host
+runtime, the fixtures and one entry point, `m1-timing.command`, for a Mac with no toolchain
+(D-020). It writes one `results.json` + `log.txt` per run: machine, session type, a timer probe
+(`noplayout-output --bench-timer`), S2 paint-path cost (`--bench-s2`), S1a rows (A/B × 59.94/50,
+10 minutes each by default, through the real renderer and the oracle) and process-tree memory at
+1 and 2 channels with the Basketball on-air set, plus swap and memory pressure (D-021); earlier
+results survive a kit rebuild. Engine and output take `NOPLAYOUT_RATE`. Reports:
+`docs/spikes/S1a-paint-pacing.md`, `docs/spikes/S2-paint-path-and-memory.md`; ADR draft
+`docs/adr/0061-provisional-drive-mode.md` (provisional macOS mode A; Windows/Linux pending,
+D-019). **All S1a/S2 numbers are from the Mac Studio, Terminal session, 1 minute per row:
+provisional, not reference hardware.** No S1a row passes there (one late pacer wake a minute in
+every row; mode A a few held slots; mode B 59.94 flaps at the rate crossing). S2: 1080p
+copy + convert ≈ 1.2 ms per slot; memory 857 MiB (1 channel) / 1,679 MiB (2 channels, upper
+bound), no swap, pressure normal; budget proposed for Caleb in the S2 report. The M2-mini run
+is pending an off-show window. Found and fixed on the way: ring names took the UUIDv7 run id's
+time prefix, so two engines started within a minute opened each other's ring. Open
+(`TODO(M1)`): pacer time-constraint policy if the M2 shows the late wake; B's crossing
+hysteresis before S1b; `footprint` instead of summed RSS; a command sent before the program
+page registers is lost (`"result": null`), gated by the supervisor in task 8.
+
+Still pending: M1 tasks 8–10 (supervisor/recovery and S7a, CEF conformance and pixel tests). M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
 

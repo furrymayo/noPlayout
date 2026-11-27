@@ -13,6 +13,8 @@ BIN=${NOPLAYOUT_BIN:-target/release}
 rm -rf "$D" && mkdir -p "$D"
 export NOPLAYOUT_DATA_DIR="$D/data" NOPLAYOUT_UI_TOKEN=oracle NOPLAYOUT_HOST_DIR="${NOPLAYOUT_HOST_DIR:-$PWD/web/dist/host}"
 export NOPLAYOUT_DRIVE_MODE="$MODE"
+# The output process's 1 Hz counters (slots_skipped, held, submit_blocked, ...) go to engine.log.
+export RUST_LOG="${RUST_LOG:-info,noplayout_engine=debug}"
 # The dump starts with the output clock; the oracle drops the lead-in before the first readable
 # frame (the page loading), so dump 10 s more than asked.
 export NOPLAYOUT_DUMP_PAINTS="$D/dump" NOPLAYOUT_DUMP_FRAMES=$((FRAMES + 600))
@@ -31,4 +33,4 @@ for _ in $(seq 1 600); do grep -q "DumpComplete" "$D/engine.log" && break; sleep
 curl -s -X POST -H "x-noplayout-token: oracle" "http://127.0.0.1:$PORT/api/v1/internal/shutdown" >/dev/null
 wait $PID
 echo "engine exit $?"
-"$BIN/noplayout-oracle" "$D/dump" --mode "$MODE" | tee "$D/report.json"
+"$BIN/noplayout-oracle" "$D/dump" --mode "$MODE" --rate "${NOPLAYOUT_RATE:-60000/1001}" | tee "$D/report.json"

@@ -17,6 +17,22 @@ pub fn drive_mode_from_env() -> DriveMode {
     }
 }
 
+/// Dev/harness override of the channel rate, `NOPLAYOUT_RATE=50` or `60000/1001` (the output
+/// process reads the same variable). Until channels have a configured format (M2), 1080p59.94.
+pub const ENV_RATE: &str = "NOPLAYOUT_RATE";
+
+pub fn format_from_env() -> noplayout_proto::Format {
+    let mut f = noplayout_proto::Format::HD1080P5994;
+    if let Ok(v) = std::env::var(ENV_RATE) {
+        let (n, d) = v.split_once('/').unwrap_or((&v, "1"));
+        match (n.parse::<u32>(), d.parse::<u32>()) {
+            (Ok(n), Ok(d)) if n > 0 && d > 0 => (f.rate_num, f.rate_den) = (n, d),
+            _ => tracing::warn!("ignoring a bad {ENV_RATE}={v}"),
+        }
+    }
+    f
+}
+
 /// A page token: two UUIDv7 bodies (148 random bits), alphabet `[0-9a-f]`.
 pub fn page_token() -> String {
     format!("{}{}", crate::new_token(), crate::new_token())

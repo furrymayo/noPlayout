@@ -29,11 +29,16 @@ fn paint(w: &mut Writer, fill: u8, at: u64) -> PaintMeta {
 
 #[test]
 fn name_is_short_and_safe() {
-    let n = ring_name("0193ab12-ffff-7000", "1", 42);
-    assert_eq!(n, "np0193ab12-1-42");
+    let n = ring_name("0193ab12-ffff-7000-8000-00000000abcdef12", "1", 42);
+    assert_eq!(n, "np00abcdef12-1-42");
     assert!(shm::os_name(&n).is_ok());
     assert!(shm::os_name("a/b").is_err());
     assert!(shm::os_name(&"x".repeat(31)).is_err());
+    // Two engines started in the same second share a UUIDv7 time prefix, not its random tail.
+    assert_ne!(
+        ring_name("0193ab12-ffff-7000-8000-000000000001", "1", 1),
+        ring_name("0193ab12-ffff-7000-8000-000000000002", "1", 1)
+    );
 }
 
 #[test]
