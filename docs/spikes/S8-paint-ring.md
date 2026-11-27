@@ -50,9 +50,9 @@ Not exercised. Reasons for not adopting it in M1:
 - R22's mitigation is exactly this ring, with the same §5.3 protocol, so nothing downstream
   depends on the choice.
 
-**Open for the frontier review:** E-042 says "iceoryx2 if S8 shows it meets …". This card did not
-run iceoryx2, so the comparison is not done; the decision recorded here is "own ring is
-sufficient", not "iceoryx2 fails". Remove `iceoryx2` from the workspace pins once that is agreed.
+**Decided in ADR 0063** (frontier review): the own ring is adopted and iceoryx2 is not
+evaluated; the decision is "own ring is sufficient", not "iceoryx2 fails". The `iceoryx2` and
+`memmap2` workspace pins are removed.
 
 ## Pending
 
