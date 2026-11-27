@@ -62,12 +62,14 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 | E-049 | Paint identity, single conversion, per-sender threads | Proposed (rev 2); stuck-sender handling replaced by E-055 (rev 3) |
 | E-050 | Settings apply transaction with one owner and an effective revision | Proposed (rev 2); commit point and post-apply failures defined by E-054 (rev 3) |
 | E-051 | Fallback completion status; required formats and platforms stay required | Proposed (rev 2); Q4 decided (Caleb, D-015): all formats stay required |
-| E-052 | Recovery fidelity per replica copy; promotion eligibility; what the 2 s same-state guarantee covers | Proposed (rev 3), within Caleb's D-015 |
-| E-053 | Pacing oracle time base in the source domain, plus a lag band | Proposed (rev 3), replaces E-048's `m` |
+| E-052 | Recovery fidelity per replica copy; promotion eligibility; what the 2 s same-state guarantee covers | Proposed (rev 3), within Caleb's D-015; time declaration replaced by E-058, fidelity `replayed-timed` added by E-059 (rev 4) |
+| E-053 | Pacing oracle time base in the source domain, plus a lag band | Proposed (rev 3), replaces E-048's `m`; model count corrected (rev 4, review 3 N9) |
 | E-054 | Settings: one commit point, defined outcome for every persistence and rollback failure | Proposed (rev 3) |
 | E-055 | A non-returning NDI submit recycles the output process; slow submits keep the sender | Proposed (rev 3) |
-| E-056 | Declared checkpoint protocol: quiescent cut, frontier seq, timed tail inside restore | Proposed (rev 3) |
+| E-056 | Declared checkpoint protocol: quiescent cut, frontier seq, timed tail inside restore | Proposed (rev 3); bad-checkpoint fallback replaced by E-059 (rev 4) |
 | E-057 | PaintStall detected by a forced-repaint probe, not by rAF | Proposed (rev 3), spike-gated (S7a) |
+| E-058 | Time declarations list every timer with its entry points; exposure and flags per timer; CI declaration audit | Proposed (rev 4) |
+| E-059 | Load frontier: exact timestamped full replay before the first checkpoint and as the last fallback (`replayed-timed`) | Proposed (rev 4) |
 
 ---
 
@@ -598,6 +600,8 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Reason.** It makes the approved limitation visible and bounded, keeps every valid OGraf graphic usable, and puts the
   operator's remedy (re-take in a break, or feed the clock from data) in front of them before the second failure.
 - **Gate.** S7a kill → rebuild → second-kill cases; M3 web late-join clock test; R24.
+- **Rev 4 amendment (review 3 N7).** The `selfTimedAfter` declaration form is withdrawn and replaced by E-058's timer list;
+  exposure, `L` and flags become per timer. A fourth fidelity, `replayed-timed`, is added by E-059. The rest stands.
 
 ## E-053: Pacing oracle time base in the source domain
 - **Context.** Review 2 N2: rev 2's `m` was computed in output periods, so a correct 60 → 59.94 conversion fails its row.
@@ -607,6 +611,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Reason.** An exact-rational model (`~/OrgWork/projects/noplayout/design/oracle_model.py`) gives the ideal conversion
   10 skips, 0 step errors and a 16.67 ms band at every phase, against 20 failures for rev 2's rule, and both mutations
   (frozen time base, repeated paint) fail. PLAN §5.5.
+- **Rev 4 amendment (review 3 N9).** Rev 3's model counted a transition twice when it both broke the step check and had
+  `Δs ≤ 0`, and used the nominal period instead of the specified median. Fixed: one count per violating transition, median
+  `P̂_src`, `Δs ≤ 0` reported as a separate diagnostic. The frozen-time-base mutation now shows 10 step errors (9 with
+  `Δs ≤ 0`), not 19; its 165.8 ms band and every other result are unchanged, and no threshold moved.
 
 ## E-054: Settings commit point and post-apply failures
 - **Context.** Review 2 N3: rev 2 did not say what happens when persistence fails after resources were applied.
@@ -638,6 +646,10 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
   time-faithful by construction. A bad checkpoint falls back to the full journal (copy becomes `replayed`, flagged).
 - **Reason.** A consistent cut plus a time model that does not depend on when an action is executed is what makes "exact"
   provable; M5's property test and the second-kill test check it. PLAN §2.13.4.
+- **Rev 4 amendment (review 3 N8).** "A bad checkpoint falls back to the full journal (copy becomes `replayed`, flagged)"
+  is withdrawn: it contradicted "a checkpoint-declaring graphic is never plain replayed". A bad checkpoint is discarded
+  (`checkpoint_discarded` in Health) and the restore falls back to an older checkpoint or the load frontier (E-059). The cut
+  rule is made explicit for out-of-order resolution: no cut while any action of the instance is unresolved.
 
 ## E-057: PaintStall detected by a forced-repaint probe
 - **Context.** Review 2 N6: "no paint while rAF advances" cannot tell a static scene from a stalled compositor; a static
@@ -649,3 +661,40 @@ contradict them. When M0 creates `docs/adr/`, each accepted entry becomes one AD
 - **Reason.** A healthy page answers an invalidate whatever its content, a stalled one cannot, and the judge is the reader of
   the ring, not the renderer. `invalidate` and `was_resized` exist in the cef 156.7.0 bindings for every target built;
   behaviour under external begin-frame is the S7a check (R25).
+
+## E-058: Time declarations list every timer
+- **Context.** Review 3 N7: rev 3's `selfTimedAfter` named one set of triggers per graphic. The Basketball scorebug's
+  `showMessage` with `autoHideSeconds > 0` arms a second timer that hides the message with no engine action, so a rebuilt
+  copy of a data-fed scorebug that showed a timed message was classed Exact while it showed the expired message again (the
+  reviewer reproduced it in Chromium with the unmodified graphic). A single flag per instance also could not say "the
+  clock is exact, the message is not".
+- **Options.** (a) Declare every timer with its entry points and track exposure per timer. (b) Keep one trigger list per
+  graphic and add `showMessage` to it (fixes this case, but a data-fed scorebug then reads as an inexact clock). (c) Treat
+  any graphic that has any timer as exposed from `load` (simple, but marks every data-fed scorebug inexact for life).
+- **Choice.** (a). `v_noplayout.time` is `"none"` or `{timers: [{id, kind: clock|timer, label, startedBy: {actions,
+  dataTrue}}]}`; an `actions` entry may carry `payloadGt`, where a missing or non-numeric field counts as arming. A timer is
+  exposed from its first matching journal entry for the instance's life, with no healing assumed: proving that a one-shot
+  timer has expired in both copies would need the graphic's internal time, which is what we cannot see. Only `clock`
+  timers carry the `L` bound; other timers read "may differ". Undeclared graphics get one implicit `self` timer from
+  `load`. A CI audit (`noplayout.recovery.audit.json`) maps every timer-pattern match in a declared package's sources to a
+  timer or a reason, and fails on drift. The recovery-probe fixture is split into a really time-free `probe-static` and a
+  `probe-timed`; a false `time: none` on `probe-timed` is a negative control. PLAN §2.13.3a, §2.13.6.
+- **Reason.** Each displayed claim matches one mechanism in the graphic, so the operator is told exactly what may be wrong
+  and the data-fed clock keeps its exact claim. The audit makes a stale sidecar a CI failure instead of a wrong Exact.
+- **Gate.** §2.13.6 kill → rebuild cases 5–8 and the probe declaration cases in S7a (M1); R24.
+
+## E-059: Load frontier for checkpoint-declaring graphics
+- **Context.** Review 3 N8: rev 3 did not say how a checkpoint-declaring instance is restored before its first checkpoint,
+  and its fallback labels contradicted each other.
+- **Options.** (a) Exact timestamped full replay from the load (the load frontier) until the first checkpoint, and as the
+  last fallback. (b) Take an initial checkpoint right after `load` (an extra round trip on every take, and it can still
+  fail, which needs (a) anyway).
+- **Choice.** (a). Restore = `load` at its original `loadTs` → every journal entry with original `ts`, `replay: true`,
+  `skipAnimation: true` → live. Under the Designed time model this is step 2 with the cut at the load, so the copy is exact
+  by the same declaration; fidelity `replayed-timed`, no flag. The whole journal of a checkpoint-declaring instance is kept
+  for its life. Invalid or failing checkpoints are discarded, the instance is re-loaded in that page, and the restore tries
+  older checkpoints, then the load frontier.
+- **Reason.** No new failure mode and no extra work on the take path; the outcome is the same exactness claim the
+  checkpoint path already makes, tested deterministically.
+- **Gate.** M5 load-frontier edge tests 1–3 (before the first checkpoint incl. web join and K7; invalid-checkpoint
+  fallback; out-of-order pair during a checkpoint request with exactly-once assertion). PLAN §2.13.4 step 4, §2.13.6.

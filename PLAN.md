@@ -1,24 +1,26 @@
 # noPlayout: build plan
 
-- **Status:** design draft **rev 3** for cold review 3 (card t_953b470d, scoped to review 2's findings), then Caleb's
-  approval. Nothing here is built yet. Rev 1 (87908b9) got REWORK in cold review 1 (11 findings, 4 blocking); rev 2
-  (c90763d) got REWORK, converging, in cold review 2 (`~/OrgWork/projects/noplayout/reviews/plan-review-2.md`: 1 blocking
-  N1, 5 should N2–N6, plus an M1 task mismatch). Both are answered in **§ Review 2 disposition** and **§ Review 1
-  disposition** at the end.
+- **Status:** design draft **rev 4**, the last design round: Rayleigh checks N7–N9 against review 3's "Required
+  correction" text, then the plan goes to Caleb for approval. Nothing here is built yet. Rev 1 (87908b9) got REWORK in cold
+  review 1 (11 findings, 4 blocking); rev 2 (c90763d) got REWORK, converging, in cold review 2 (1 blocking N1, 5 should
+  N2–N6); rev 3 (d743711) got REWORK in scoped cold review 3 (`~/OrgWork/projects/noplayout/reviews/plan-review-3.md`: 1
+  blocking N7, should N8, minor N9, plus a Q1 wording fix; N2/N3/N4/N6 closed). All are answered in **§ Review 3
+  disposition**, **§ Review 2 disposition** and **§ Review 1 disposition** at the end. Rev 4 changes only those items.
 - **Caleb's answers are binding here:** D-015 (2026-11-26) answered Q1–Q5 as recommended, including the N1 scope of Q2
   (a third-party graphic's self-run clock is exact on the first failover only; replacement standbys and web late
   joins/reconnects lose replay-age time and are flagged). Rev 3 is written to match. Only Q6 is still open.
-- **Author:** Franky (CTO). Rev 1 card t_95b8a2c9; rev 2 card t_63bf63cf; rev 3 card t_184845fe, 2026-11-26. Branch
+- **Author:** Franky (CTO). Rev 1 card t_95b8a2c9; rev 2 card t_63bf63cf; rev 3 card t_184845fe; rev 4 card t_e861eb8b,
+  2026-11-26. Branch
   `design/plan` (local only), with `main` merged in at 96a24c2 (D-012…D-014) and 4e4e538 (D-015).
 - **Inputs:** `IDEA.md` (source of truth), `docs/BUILD-BRIEF.md`, `docs/01-decisions.md` **D-001…D-015** (D-009 UI answers,
   D-010 research picks, D-011 OES-only decoder, D-012/D-014 Basketball package as a public Apache-2.0 fixture with OFL fonts,
   D-013 OES test corpus from `unc-virtual-score-server`, D-015 answers to Q1–Q5 are binding here), Robin's
   `2026-11-26-noplayout-foundations.md` + addendum, Robin's `2026-10-30-replayserver-ndi-license.md`, Usopp's **`UI.md` rev 3
-  (final build target)** + `noplayout-mockups.pdf` (24 pages) at `~/OrgWork/projects/noplayout/design/`, cold reviews 1 and 2.
-- **Companion file:** `DECISIONS.md` (engineering decision record, entries E-001…E-057). Where this plan says "E-0nn", the
+  (final build target)** + `noplayout-mockups.pdf` (24 pages) at `~/OrgWork/projects/noplayout/design/`, cold reviews 1, 2 and 3.
+- **Companion file:** `DECISIONS.md` (engineering decision record, entries E-001…E-059). Where this plan says "E-0nn", the
   reasoning is there. Rev 2 supersedes E-008, E-012 (in part) and E-019, and amends E-001, E-006, E-013, E-014, E-017,
-  E-020, E-023 and E-033. Rev 3 adds E-052…E-057 and amends E-041, E-043, E-045, E-048, E-049 and E-050. Old text is kept
-  and marked.
+  E-020, E-023 and E-033. Rev 3 adds E-052…E-057 and amends E-041, E-043, E-045, E-048, E-049 and E-050. Rev 4 adds E-058
+  (timer declarations) and E-059 (load frontier), and amends E-052, E-053 and E-056. Old text is kept and marked.
 
 Every version below was checked against crates.io / npm on 2026-11-26, and the APIs this plan depends on were read in the
 published crate source at exactly that version (see §3, "Verified"), except where §3 says "version-checked only". Nothing was
@@ -605,7 +607,8 @@ For every live instance the engine keeps a **journal**: `load` (graphic id + ver
   crash would take about 9 s"); nothing is dropped.
 - Persistence: appended to `shows/<show-id>.onair.jsonl` (one line per entry, fsync debounced 200 ms) and dropped for an
   instance when it is disposed. Declared checkpoints (E-056) are journal entries too; a rebuild starts from the newest valid
-  one and replays only the tail after its `frontierSeq`. The show's `onAir` block points at it. Engine restarts and the
+  one and replays only the tail after its `frontierSeq`; the head stays, for the load-frontier fallback (E-059). The show's
+  `onAir` block points at it. Engine restarts and the
   cold-start restore prompt read it.
 
 #### 2.13.3 Restore paths
@@ -620,7 +623,9 @@ For every live instance the engine keeps a **journal**: `load` (graphic id + ver
 - **Cold restore** (no promotable standby: a second fault during a rebuild, K3b, K7, a format change, standby turned off). A
   new renderer gets a snapshot: per layer, `load(dataAtLoad)`, then the instance's declared checkpoint restore if it has one
   (E-056), then the journal (or its tail after the checkpoint) replayed in order with `skipAnimation: true`, then the live
-  stream (§2.14 handoff). For **K3b** the action in flight when both replicas hung is marked `quarantined` and left out of
+  stream (§2.14 handoff). A checkpoint-declaring instance with no valid checkpoint yet is restored from its **load
+  frontier**: the whole journal with original `ts` (E-059, §2.13.4). For **K3b** the action in flight when both replicas
+  hung is marked `quarantined` and left out of
   the replay; the instance is restored to its state before that action, and the On-air strip shows "‘Show message’ froze
   this graphic and was skipped". The output holds the last good frame throughout.
 - **Rebuild of a replacement standby, late join and reconnect** of a web page or the preview use the cold-restore procedure
@@ -639,87 +644,146 @@ instance `i`, the engine records how `p` came to hold `i`:
 |---|---|---|
 | `live` | `p` executed `load(i)` and every later action of `i` as they were issued, in real time (no rebuild of `p` since `i` was loaded) | everything, running self-timed state included, within the action-delivery skew between pages (target ≤ 1 frame, measured in S7a) |
 | `checkpointed` | `p` restored `i` from a declared checkpoint plus the timed tail (E-056, §2.13.4) | everything, by the graphic's own declaration; for noPlayout-built (Designed) graphics by construction, and tested |
+| `replayed-timed` (rev 4, E-059) | `p` rebuilt a checkpoint-declaring `i` from its **load frontier**: `load` and the whole journal, every entry with its original `ts` and `replay: true`. Used before `i`'s first checkpoint exists and when every stored checkpoint is invalid (§2.13.4 step 4) | the same as `checkpointed`, by the same declaration (the Designed time model); for Designed graphics by construction, and tested |
 | `replayed` | `p` rebuilt `i` by replaying its journal with `skipAnimation` | durable inputs (graphic version, data incl. data-source fields, layers, cue, step/phase) and the effects of every dispatched action (Basketball `addPoints` ×257). **Not** time a graphic runs by itself (below) |
 
-**Time exposure of an instance.** Whether a `replayed` copy is exact depends on whether the graphic keeps time by itself. The
-engine cannot see inside a third-party graphic, so it uses the graphic's declaration, and assumes the worst without one:
+**Time exposure of an instance: declared timers (rev 4, E-058; review 3 N7).** Whether a `replayed` copy is exact depends
+on whether the graphic keeps time by itself, and in which of its parts. The engine cannot see inside a third-party graphic,
+so it uses the graphic's declaration of **every timer it can start**, and assumes the worst without one. (Rev 3's
+single-trigger `selfTimedAfter` form is withdrawn: it let the scorebug's message auto-hide go undeclared, so a rebuilt copy
+was called Exact while it showed an expired message again. Review 3 reproduced this with the unmodified graphic.)
 
-- `"v_noplayout": {"time": "none"}`: nothing the graphic shows depends on elapsed time except in/out animations (a replayed
-  copy lands on their end state). A replayed copy is **exact**.
-- `"v_noplayout": {"time": {"selfTimedAfter": {"actions": ["startClock"], "dataTrue": ["clockRunning"]}}}`: the graphic keeps
-  its own time only after one of the listed custom actions was dispatched, or while one of the listed data fields has been
-  truthy, since `load`. A replayed copy whose journal has none of those is **exact**; otherwise it is exposed from the
-  first such event.
-- `"v_noplayout": {"recovery": "checkpoint"}`: copies are `checkpointed`, never plain `replayed` (§2.13.4).
-- **No declaration** (any third-party graphic by default): the instance is treated as self-timed from its `load`.
+- `"v_noplayout": {"time": "none"}`: the graphic starts no timer and reads no elapsed time. Nothing it shows depends on
+  time except **finite animations started by an action** (in/out, step, update and effect animations with a fixed
+  duration and no iterations), and a replayed copy lands on their end state. A replayed copy is **exact**.
+- `"v_noplayout": {"time": {"timers": [...]}}`: the graphic lists every timer, each with the entry points that start it:
+
+  ```json
+  {"time": {"timers": [
+    {"id": "clock",   "kind": "clock", "label": "clock",
+     "startedBy": {"actions": ["startClock"], "dataTrue": ["clockRunning"]}},
+    {"id": "message", "kind": "timer", "label": "timed message",
+     "startedBy": {"actions": [{"id": "showMessage", "payloadGt": {"autoHideSeconds": 0}}]}}
+  ]}}
+  ```
+
+  - An `actions` entry is an action id (custom actions, or OGraf's own such as `playAction`). It may carry `payloadGt`: the
+    action starts the timer only when that payload field, after the engine's schema validation, is a number greater than
+    the value. **A missing or non-numeric field counts as starting the timer**, so the condition can only narrow "every
+    call" where the payload proves no timer was armed, never widen it.
+  - `dataTrue` names data fields whose truthy value, in `dataAtLoad` or after any `updateAction`, starts the timer.
+  - A timer is **exposed** in a `replayed` copy from the first journal entry that matches one of its entry points. It stays
+    exposed for the instance's life. No healing is assumed, even for a one-shot timer that would later expire in both
+    copies (E-058 records why). A replayed copy is exact only if **none** of its timers is exposed.
+  - `kind: "clock"`: the timer counts elapsed time into a displayed value. An exposed clock is short by at most `L` (below),
+    and the flag carries that bound.
+  - `kind: "timer"`: any other time-driven behaviour (an auto-hide, a dwell/auto-advance). An exposed timer **may differ**
+    in any way while the instance lives: a message the live copy already hid can appear again in the rebuilt copy for its
+    full duration, and a ticker can show a different item. No bound is claimed.
+- `"v_noplayout": {"recovery": "checkpoint"}`: copies are `checkpointed` or `replayed-timed`, never plain `replayed`
+  (§2.13.4, E-059).
+- **No declaration** (any third-party graphic by default): one implicit timer `{id: "self", kind: "timer"}`, exposed from
+  `load`. Its flag reads "⟨graphic⟩ may differ (own timing)" and shows the replay age as information, not as a bound,
+  since nothing says what the graphic times.
+
+**Flags are per timer.** The fidelity record, the standby indicator, the On-air strip and a web output's row name the
+exposed **timers** of each instance, not just the instance. A data-fed scorebug that showed a timed message reads
+"Scorebug: timed message may differ" and reports its clock exact. A self-run clock reads "Scorebug clock up to 8 min 2 s
+behind". A data-fed clock is never reported inexact because another timer in the same graphic is exposed, and an exposed
+message timer is never reported with a clock's `L` bound.
 
 Declarations come from the graphic's manifest (`^v_` keys are allowed by OGraf v1, §2.13.4) or from an optional per-package
 sidecar, `noplayout.recovery.json` next to the manifests, so a package we cannot edit (third-party), or one we keep exactly as
 supplied (the Basketball fixture, D-012's sha256, so tests exercise what Caleb ships), can still be declared. The sidecar is
 hashed into the graphic version; Health shows
 "recovery declared by sidecar". A wrong declaration produces a wrong "exact" claim, so the fixture declarations are covered
-by the recovery tests (§2.13.6). `actions` may name OGraf's own actions too (`playAction`). For the Basketball package the
-sidecar declares `bball-scorebug` as `selfTimedAfter {actions: [startClock], dataTrue: [clockRunning]}`, `bball-ticker` as
-`selfTimedAfter {actions: [playAction]}` (it flips items on its own `dwellSeconds` timer, so a replayed copy shows a
-different item), and the other four as `time: none`. Checked in the sources: only `bball-scorebug` and `bball-ticker` call
-the base library's `setTimer`/`setRepeat`; the rest time only their in/out and step animations.
+by the recovery tests (§2.13.6) and by a declaration audit (below).
 
-**Time shortfall bound.** For an exposed instance `i` replayed into page `p` at engine time `t_rebuild`, with `t_expose` the
-`ts` of its first self-timing event (its `load` if undeclared), the copy's self-run time can be short by up to
+**Basketball declarations, audited (rev 4).** Read in the six unmodified graphics and their shared `lib/ograf-base.mjs`
+(byte-identical in all six): every way to start a timer or read elapsed time, i.e. `setTimer`/`setRepeat` (the library's
+wrappers; their own bodies are listed as wrappers), `setTimeout`/`setInterval`, `requestAnimationFrame`, `performance.now`,
+`Date`, Web Animations with `iterations`, and CSS animations or transitions. The graphics stay unmodified; only the sidecar
+declares them.
+
+| Graphic | Self-timed behaviour found in the source | Entry points | Sidecar declaration |
+|---|---|---|---|
+| `bball-scorebug` | **Game and shot clock.** A 50 ms `setRepeat` tick, armed at `load`, takes `performance.now()` deltas off `gameMs`/`shotMs`, but only while `running`; it stops itself at 0:00 (`_onTick`, `_setRunning`) | `startClock`; `clockRunning` truthy at load or by `updateAction` | `clock`, kind `clock`, `startedBy {actions: [startClock], dataTrue: [clockRunning]}` |
+| `bball-scorebug` | **Message auto-hide** (review 3 N7). `showMessage` with `autoHideSeconds > 0` arms a `setTimer` that calls `hideMessage` with no engine action (`showMessage`) | `showMessage` with `autoHideSeconds > 0` (manifest schema: number, 0–600, default 0) | `message`, kind `timer`, `startedBy {actions: [{id: showMessage, payloadGt: {autoHideSeconds: 0}}]}` |
+| `bball-scorebug` | Otherwise only finite animations: score flash and "+N" badge (≤ 1.5 s, not run under `skipAnimation`), possession, bonus tag, the lift above the ticker, message in/out | — | covered by the two timers above |
+| `bball-ticker` | **Dwell auto-advance.** `_schedule` arms a `setTimer` of `dwellSeconds` (default 6) that flips to the next item and re-arms itself. It arms only while visible, unpaused and with ≥ 2 items (`onShown`, `apply`, `_flip`) | `playAction`: every arming path needs `visible`, which only `playAction` sets; `nextItem`/`previousItem` while hidden only change the index | `dwell`, kind `timer`, `startedBy {actions: [playAction]}` |
+| `bball-matchup` | none: in/out and two-step animations (`anim`/`stagger`, fixed durations, no iterations) | — | `time: none` |
+| `bball-stat-card` | none: in/out animations, `countUp` (a `requestAnimationFrame` loop bound to a finite Web Animation, ≤ 900 ms) and an update flash (1,000 ms), all skipped under `skipAnimation` | — | `time: none` |
+| `bball-lower-third` | none: in/out animations | — | `time: none` |
+| `bball-sponsor-bug` | none: in/out animations; no sponsor rotation or cycling | — | `time: none` |
+| `lib/ograf-base.mjs` (all six) | `whenImagesReady`'s 3 s `setTimeout` bounds how long `load`/`updateAction` waits for images; it changes no displayed state. `countUp`'s rAF loop is bound to a finite animation (stat card row). `setTimer`/`setRepeat` are the wrappers themselves | — | not timers; listed in the audit file with those reasons |
+| `preview.html` (package root) | a development preview page; no OGraf host loads it | — | excluded from the scan by name, with that reason |
+
+**Declaration audit (CI gate, rev 4).** The sidecar ships with `noplayout.recovery.audit.json`. It lists every match of the
+patterns above in the package's sources by file and line hash, each mapped to a declared timer or to a written reason it is
+not one (the table above, as data). A CI test rescans the package and **fails on any unlisted match or any declared timer
+with no match**, so a package update that adds a timer cannot keep a stale sidecar. The scan is a tripwire, not a proof: a
+timer reached through an alias would slip past it. The recovery tests (§2.13.6) are the proof for this package.
+
+**Time shortfall bound.** For an exposed `clock` timer of instance `i` replayed into page `p` at engine time `t_rebuild`,
+with `t_expose` the `ts` of the first journal entry that started that timer, the copy's self-run time can be short by up to
 **`L(p, i) = t_rebuild − t_expose`**. The bound is fixed at rebuild: after it, the copy keeps time at the right rate, so the
 error neither grows nor heals. It grows with how old the instance was when `p` was rebuilt (its *replay age*), not with the
 time since the failure. Example: a self-running Basketball game clock started at the tip; the first renderer failure is at
 8:00 of the half. The replacement standby is rebuilt at about 8:02, so `L = 8 min 2 s` for the scorebug in that standby.
 A second failure at any later point in the half puts a clock on air that shows 8 min 2 s more time remaining than the real
 clock; the On-air strip says so (below). Data-fed clocks (the Basketball scorebug with `clockRunning: false` and `gameClock`
-pushed from OES, D-008) have no exposure, so `L = 0` on every path.
+pushed from OES, D-008) never start the `clock` timer, so `L = 0` for the clock on every path. A timed message shown by
+that same scorebug exposes its `message` timer, which is flagged on its own ("may differ", with the replay age for
+diagnostics, not as a bound) and does not make the clock inexact.
 
 **Standby eligibility.** Three states, recomputed on every load, dispose, rebuild and divergence event, shown on the On-air
 strip's standby indicator and in Health *before* any failure:
 
 | State | Condition | On the next active-renderer failure (K1, K2, K2g, K3a, K4) |
 |---|---|---|
-| **Exact** | the standby is running, has sent `Synced` for the current `seq`, beats, is not `diverged`, and for every on-air instance its copy is `live`, `checkpointed`, or `replayed` with no exposure | warm promotion; ≤ 2 s (targets §2.13.5) **and the same state in every class**. This is the guarantee Caleb approved (D-015 Q1) |
-| **Ready, inexact** | as Exact, except one or more on-air instances are `replayed` with exposure | warm promotion, same ≤ 2 s; durable inputs and action effects identical; each exposed instance comes back with its self-run time short by up to its `L`, and is flagged on the On-air strip ("Scorebug clock may be up to 8 min 2 s behind", Usopp's wording) |
-| **Not ready** | rebuilding, not yet `Synced`, not beating, `diverged` and not yet rebuilt, or absent | cold restore (§2.13.3), ≤ 2 s target not guaranteed; exposed instances flagged with `L` = the replay age at that restore |
+| **Exact** | the standby is running, has sent `Synced` for the current `seq`, beats, is not `diverged`, and for every on-air instance its copy is `live`, `checkpointed`, `replayed-timed`, or `replayed` with no exposed timer | warm promotion; ≤ 2 s (targets §2.13.5) **and the same state in every class**. This is the guarantee Caleb approved (D-015 Q1) |
+| **Ready, inexact** | as Exact, except one or more on-air instances are `replayed` with at least one exposed timer | warm promotion, same ≤ 2 s; durable inputs and action effects identical; each exposed timer is flagged on the On-air strip by name: an exposed clock comes back short by up to its `L` ("Scorebug clock may be up to 8 min 2 s behind"), any other exposed timer may differ ("Scorebug timed message may differ"; Usopp's wording) |
+| **Not ready** | rebuilding, not yet `Synced`, not beating, `diverged` and not yet rebuilt, or absent | cold restore (§2.13.3), ≤ 2 s target not guaranteed; exposed timers flagged the same way, a clock's `L` = the replay age at that restore |
 
-The standby indicator reads "Standby: exact" (green), "Standby: ready — not exact for Scorebug clock (up to 8 min 2 s)"
-(amber) or "Standby: rebuilding / not ready" (amber/red), so the operator learns of an inexact standby while there is still
-time to act, not after the second failure.
+The standby indicator reads "Standby: exact" (green), "Standby: ready — not exact for Scorebug clock (up to 8 min 2 s)" or
+"Standby: ready — not exact for Scorebug timed message" (amber), or "Standby: rebuilding / not ready" (amber/red), so the
+operator learns of an inexact standby while there is still time to act, not after the second failure.
 
 **When exactness comes back.** An inexact copy of `i` becomes exact again only when:
 1. `i` ends and is loaded again (taken out and back in, a new `generation`): every page then holds the new instance `live`.
    This is the operator's remedy, and the indicator says so ("re-take Scorebug in a break to make the standby exact");
-2. `i` has a declared checkpoint: the replacement standby restores it `checkpointed` during its rebuild, so it is never
-   inexact in the first place; or
+2. `i` has a declared checkpoint: the replacement standby restores it `checkpointed` (or `replayed-timed` before the first
+   checkpoint) during its rebuild, so it is never inexact in the first place; or
 3. `i` is disposed with no successor.
 
 Nothing else restores it: rebuilding the standby again replays again, and the divergence check (§2.13.4) can prove a copy
 differs but never that it matches, so it is never used to declare a copy exact. If a copy cannot be made exact, the standby
 stays **Ready, inexact** and is still promoted on a failure, because it is still faster than a cold restore and identical
-in everything but the flagged clocks.
+in everything but the flagged timers.
 
 **Web late join and reconnect.** Web output pages follow the same rules per page. A web output opened (or reconnecting) at
-time `t_join` holds every exposed instance `replayed` with `L = t_join − t_expose`: a self-running scorebug clock in a web
-output opened 15 min after the tip runs 15 min short in that page for as long as that instance lives. The web output's row
-in Outputs, Health and (if that web output is marked on-air) the On-air strip carry the flag. Data-fed and Designed clocks
-are exact in web outputs too (`L = 0`). Web pages never feed NDI, so this never changes the program output.
+time `t_join` holds every exposed instance `replayed`, with `L = t_join − t_expose` for an exposed clock: a self-running
+scorebug clock in a web output opened 15 min after the tip runs 15 min short in that page for as long as that instance
+lives, and a page opened just after a timed message expired shows that message again for its duration, flagged. The web
+output's row in Outputs, Health and (if that web output is marked on-air) the On-air strip carry the flags. Data-fed and
+Designed clocks are exact in web outputs too (`L = 0`). Web pages never feed NDI, so this never changes the program output.
 
 **What is guaranteed, in one paragraph (D-015).** A single failure of the active renderer with an **Exact** standby restores
 the same picture, running clocks included, within 2 s. That holds for the first failure of the session, and again after
-any rebuild for which the standby returns to Exact (all instances on air are data-fed, declared `time: none`, checkpointed,
-or were loaded after the rebuild). For a third-party graphic that keeps its own time and was on air before the rebuild, the
-second failure is still fast and still keeps scores, steps and data, but its own clock can be short by the replay age `L`,
-and that is flagged before and after the failure. Live clocks therefore belong in data (OES) or in noPlayout-built graphics,
-which are exact on every path. If S9 succeeds (time-faithful replay, §2.13.4), `replayed` copies of third-party graphics
-gain a fourth fidelity, `replayed-timed`, that counts as exact, and the Ready-inexact state becomes rare; nothing is planned
-on that.
+any rebuild for which the standby returns to Exact (every instance on air has no exposed timer, is checkpointed or
+`replayed-timed`, or was loaded after the rebuild). For a third-party graphic that keeps its own time and was on air
+before the rebuild, the second failure is still fast and still keeps scores, steps and data, but its own clock can be
+short by the replay age `L` and its other timers (a timed message, a ticker's dwell) may differ; each is flagged by name
+before and after the failure. Live clocks therefore belong in data (OES) or in noPlayout-built graphics,
+which are exact on every path. If S9 succeeds (time-faithful replay under virtual time, §2.13.4), `replayed` copies of
+third-party graphics could count as `replayed-timed` too, and the Ready-inexact state would become rare; nothing is
+planned on that.
 
-| State class | `live` copy | `checkpointed` copy | `replayed` copy (replacement standby, cold restore, late join) |
+| State class | `live` copy | `checkpointed` / `replayed-timed` copy | `replayed` copy (replacement standby, cold restore, late join) |
 |---|---|---|---|
 | Durable inputs: graphic version, data incl. data-source fields, layers, cue, step/phase as committed | exact | exact | exact |
 | Effects of every dispatched action, e.g. Basketball `addPoints` ×257 changing the score through its own `updateAction` | exact (executed live) | exact | exact (uncapped journal), for graphics that are deterministic given the same action sequence |
-| Time a graphic runs by itself: a clock started by `startClock`, timers, a ticker's scroll position | exact within skew (≤ 1 frame target) | exact (E-056) | exact if no exposure; otherwise short by up to `L`, flagged |
+| Time a graphic runs by itself: a clock started by `startClock`, a message auto-hide, a ticker's dwell | exact within skew (≤ 1 frame target) | exact (E-056, E-059) | exact if none of its timers is exposed; otherwise flagged per timer: an exposed clock short by up to `L`, any other exposed timer may differ |
 | Clocks fed from data, and every noPlayout-built (Designed) graphic | exact | exact | exact |
 | Non-deterministic graphics (random numbers, external fetches) | as live | as declared | may differ; divergence flagged when detected |
 
@@ -743,24 +807,49 @@ log. (All operator-facing strings in §2.13 are placeholders; Usopp owns the wor
      action of `i` can interleave (JS runs one task at a time). The host stamps the result with
      `frontierSeq` (the highest `seq` of `i` dispatched and resolved before the cut) and `cutTs` (server time of the cut, from
      the page's `TimeSync` offset, §4.3). The engine stores `{state, frontierSeq, cutTs}` in the journal and keeps the
-     journal tail `seq > frontierSeq`.
+     journal tail `seq > frontierSeq`. Actions that resolve out of order change nothing (rev 4, review 3 N8): the cut
+     waits until **no** action of `i` is unresolved, so `frontierSeq` is the highest `seq` dispatched to `i`, every
+     action `≤ frontierSeq` is inside the state and every action `> frontierSeq` is in the tail, each exactly once. A
+     request that finds a lower `seq` still pending after a higher one resolved answers `CheckpointDeferred`.
   2. **Restore.** `load(dataAtLoad)` → `v_noplayout_restore {state, cutTs, nowTs}` → tail actions `seq > frontierSeq` in
      order, each with its **original `ts`** and `replay: true`, with `skipAnimation: true` → live stream. A checkpoint
-     whose `frontierSeq` is not a resolved action of `i`, or that fails to restore, is discarded and the full journal is
-     used (the copy is then `replayed`, and flagged by the §2.13.3a rules).
+     whose `frontierSeq` is not a resolved action of `i`, or that fails to restore (non-200 or `PageError`), is
+     discarded: Health counts `checkpoint_discarded` (a bug in the graphic or in our runtime library, never silent), the
+     instance is disposed in that page and loaded again, and the next older stored checkpoint is tried, ending at the
+     load frontier (step 4). (Rev 3's fallback to a plain `replayed`, flagged copy is withdrawn for checkpoint-declaring
+     graphics, E-059.)
   3. **Time-faithful tail.** Restoring the state object puts the graphic at `cutTs`; the tail must not lose the time
      between `cutTs` and now. A graphic that declares checkpoints must therefore compute its time-dependent state from
      action `ts` and the host's `serverNow()`, not from its own `performance.now()` deltas: a running clock is stored as
      `{running, valueAtTs, ts}` and displayed as `valueAtTs ± (serverNow() − ts)`. Replaying `startClock` with its original
      `ts` then yields the same displayed value as the live copy.
+  4. **Before the first checkpoint, and as the last fallback: the load frontier (rev 4, E-059; review 3 N8).** No
+     checkpoint is taken at `load`. Until `i` has a valid stored checkpoint, its restore point is the load itself:
+     `load(dataAtLoad)` with the load's original `ts` (`loadTs`, §4.3) and `replay: true`, then **every** journal entry of
+     `i` in `seq` order with its original `ts`, `replay: true` and `skipAnimation: true`, then the live stream. Under the
+     Designed time model this is the same computation as step 2 with the cut at the load, so the copy is exact by the same
+     declaration; the engine records it as **`replayed-timed`** (§2.13.3a) and raises no flag. The whole journal of a
+     checkpoint-declaring instance is kept for its life for this purpose (checkpoints shorten the normal restore; they
+     never drop the head). Outcome table:
+
+     | Restore point available | Path | Fidelity | Flag |
+     |---|---|---|---|
+     | a valid stored checkpoint | step 2 | `checkpointed` | none |
+     | none yet (death, rebuild or web join in `i`'s first 10 s / 100 actions) | load frontier | `replayed-timed` | none |
+     | stored checkpoints, all invalid or failing to restore | each discarded (`checkpoint_discarded` in Health), then load frontier | `replayed-timed` | none on air; Health amber for the discard |
+
+     A checkpoint-declaring graphic whose timed full replay differs from its live copy is breaking its own declaration.
+     The M5 property and edge tests below are what catch that, and the divergence check may flag it (never prove it
+     equal); it is the R24 hazard, handled as a bug, not as a flag.
 - **The Designed time model.** Every graphic exported by M5's editor uses this time model through noPlayout's runtime
   library (`serverNow()` and `ts` are supplied by `ograf-host.js`; exported graphics run in other OGraf hosts using the
   same values from `performance.now()` and the receipt time). Every Designed graphic declares `recovery: "checkpoint"`, so
-  noPlayout's own graphics are `checkpointed` or `live` in every page and restore exactly on every path. Acceptance
-  (M5): a property test drives random action sequences with random `ts` gaps, clock starts/stops and checkpoints into a
-  live page and, at random instants, into a freshly restored page, and requires identical rendered state (clock values
-  equal to the displayed unit) at the same server time; plus kill → rebuild → wait → second kill with a Designed clock
-  graphic on air, which must show no shortfall.
+  noPlayout's own graphics are `checkpointed`, `replayed-timed` or `live` in every page and restore exactly on every path.
+  Acceptance (M5): a property test drives random action sequences with random `ts` gaps, clock starts/stops and
+  checkpoints into a live page and, at random instants, into a freshly restored page, and requires identical rendered
+  state (clock values equal to the displayed unit) at the same server time; plus kill → rebuild → wait → second kill with
+  a Designed clock graphic on air, which must show no shortfall; plus the two deterministic edge tests of §2.13.6 (failure
+  or web join before the first checkpoint, and out-of-order resolution during a checkpoint request).
 - `"v_noplayout": {"updateCompaction": true}` likewise allows merging consecutive updates. Third-party graphics without these
   keys get the full journal.
 - **S9 (spike, not relied on):** time-faithful replay of third-party graphics through the DevTools virtual-time API
@@ -813,15 +902,59 @@ OS, the architecture is revisited before M2 starts. A failed M6 crash test is no
      The test fails if the standby claims Exact, or if the shortfall exceeds the flagged `L`;
   2. the same clock, but take the scorebug out and back in after the rebuild → indicator returns to *Exact*; second K1 →
      exact;
-  3. data-fed scorebug (`clockRunning: false`, `gameClock` pushed by the OES simulator, D-013): both kills exact, indicator
-     *Exact* throughout;
+  3. data-fed scorebug (`clockRunning: false`, `gameClock` pushed by the OES simulator, D-013), no timed message: both
+     kills exact, indicator *Exact* throughout;
   4. a Designed clock graphic (M5): both kills exact, indicator *Exact* throughout (`checkpointed`);
-  5. Basketball ticker on air with 4 items: after the rebuild the indicator reads *Ready, inexact* for the ticker; an
-     undeclared copy of the recovery-probe fixture behaves the same with `L` counted from its `load`.
-- Recovery-probe fixture (coded OGraf graphic in `fixtures/`): renders patches encoding its custom-action counter, a data
-  hash, its step and an internal clock; used for every kind K1–K6 with exact expected values. Also packaged with a sidecar
-  that declares it `time: none` (expects *Exact* after a rebuild) and with none (expects *Ready, inexact*), which tests the
-  declaration path itself.
+  5. Basketball ticker on air with 4 items: after the rebuild the indicator reads *Ready, inexact* for the ticker's
+     `dwell` timer; the undeclared `probe-timed` fixture (below) behaves the same, its `self` timer counted from `load`;
+  6. **expired timed message, promotion immediately after the rebuild (rev 4, review 3 N7).** Data-fed scorebug as in
+     case 3, `showMessage {text, autoHideSeconds: 5}`; wait until the live copies have hidden it (+6 s); K1 → exact (the
+     promoted standby is `live`, message hidden). The replacement standby replays the journal and re-arms the message
+     timer. Its indicator must read *Ready, inexact — Scorebug timed message* (the `message` timer), never *Exact*, and
+     must not name the clock. Second K1 **at most 100 ms after the replacement's `Synced`**: warm promotion; the receiver
+     may show the expired message again for up to 5 s. The test asserts the On-air flag names the `message` timer before
+     and after the kill, that the clock region matches the OES reference to the displayed unit, and that no flag names
+     the clock. It fails if the standby claims *Exact* at any time after the rebuild, or if the clock is flagged;
+  7. **control for case 6:** the same with `autoHideSeconds: 0`, then `hideMessage` → no timer exposed (the `payloadGt`
+     condition is false), indicator *Exact* after the rebuild, the immediate second K1 exact with no flag;
+  8. **late join immediately after the rebuild:** in cases 6 and 7, a page opened (a second CEF page in M1, a web output
+     in M3) at most 100 ms after the replacement's `Synced`: in case 6 the page carries the `message` flag and no clock
+     flag, and may show the message again for up to 5 s; in case 7 it carries no flag and matches the program.
+- Recovery-probe fixtures (rev 4: two coded OGraf graphics in `fixtures/recovery-probe/`, reconciling rev 3's
+  contradictory `time: none` variant, review 3 N7). Both render the same patches (custom-action counter, data hash,
+  step). They differ in one thing:
+  - `probe-timed` also renders an internal clock that starts at its `load` (a `setInterval` over `performance.now()`
+    deltas). It is the worst case.
+  - `probe-static` has no clock: no timer, no rAF loop, no time read. The declaration audit scan confirms this.
+
+  Both are used for every kind K1–K6 with exact expected values. Declaration-path cases after a rebuild:
+  1. `probe-static` with a sidecar declaring `time: none` → *Exact*, and the receiver matches the live reference;
+  2. `probe-timed`, undeclared → *Ready, inexact* (implicit `self` timer from `load`), flagged with the replay age;
+  3. **negative control:** `probe-timed` packaged with a deliberately **false** sidecar declaring `time: none`. The engine
+     believes the declaration and reports *Exact*; the test asserts that the receiver's clock patch is behind by the
+     replay age, i.e. that a false declaration really produces a wrong Exact claim (R24). It is reported as a passing
+     negative control, never counted as an Exact success. It is why the declaration audit is a CI gate.
+- **Load frontier edge tests (rev 4, review 3 N8; M5, deterministic).** On a Designed clock graphic (M5-F4's count-down),
+  with the periodic checkpoint interval set out of reach by a test-only engine setting so no checkpoint exists:
+  1. **death, rebuild or web join before the first checkpoint:** `startClock` at load + 1 s; K1 at + 4 s → exact; the
+     replacement standby is rebuilt from the load frontier and its indicator reads *Exact* (`replayed-timed`); second K1
+     20 s later → clock exact to the displayed unit, no flag. The same with the standby disabled (cold path) → exact, no
+     flag. A web output opened at + 3 s → no flag and matches the program to the displayed unit. K7 (engine death) at
+     + 4 s → the supervised restart restores the clock exactly. A second run with the default interval puts the second K1
+     after the first checkpoint, so `replayed-timed` and `checkpointed` copies are both promoted;
+  2. **invalid-checkpoint fallback:** a stored checkpoint with a forged `frontierSeq`, and a checkpoint whose
+     `v_noplayout_restore` returns 500 (test hook): each is discarded (`checkpoint_discarded` in Health), the instance is
+     re-loaded in that page and restored from the older checkpoint or the load frontier; copy `replayed-timed`, exact, no
+     on-air flag;
+  3. **overlapping pair resolving out of order during a checkpoint request:** a Designed test graphic
+     (`fixtures/designed/checkpoint-probe`, built on the runtime library) with a test-only custom action whose resolution
+     is held by a latch and which bumps a per-action effect counter drawn in a patch. Dispatch A (`seq` n) and B (n + 1),
+     both held; request a checkpoint → `CheckpointDeferred`; release B → still deferred (A pending), and no cut is taken;
+     release A → the cut is taken at that boundary with `frontierSeq = n + 1` and `cutTs` after A resolved; then C
+     (n + 2). Restore into a fresh page: the counters show A, B and C applied exactly once each (A and B from the state,
+     C from the tail). Variant: C dispatched while A is still held → no cut until A, B and C have all resolved,
+     `frontierSeq = n + 2`, empty tail. Asserted throughout: no stored checkpoint ever has a `frontierSeq` at or above the
+     `seq` of an action that was unresolved at the cut.
 - More than 50,000 journal entries on one instance; an `ended` instance; a `stepCount: -1` graphic at a dynamic step; a
   graphic whose `load` takes 1.5 s (no false K3a); poison action (K3b) with quarantine message.
 - Static-scene control: a fully static graphic on air for 10 min produces no `PaintStall`, no promotion and no paint-probe
@@ -1010,7 +1143,10 @@ flags that need elapsed times ("startClock 1 min 12 s ago").
   `CheckpointResult{instanceId, generation, frontierSeq, cutTs, state}` or `CheckpointDeferred{instanceId}` (not quiescent).
   A `Snapshot` layer carries `checkpoint?: {state, frontierSeq, cutTs}` and only the journal tail after it; tail and replay
   entries keep their original `ts` and are delivered with `replay: true`. The engine, not the page, records each page's
-  fidelity per instance (`live` / `checkpointed` / `replayed`) from how it fed that page, so a page cannot claim exactness.
+  fidelity per instance (`live` / `checkpointed` / `replayed-timed` / `replayed`) from how it fed that page, so a page
+  cannot claim exactness. Rev 4 (E-059): each `Snapshot` layer also carries `loadTs` (the `ts` of the instance's original
+  `load`), so a load-frontier restore replays `load` with its original time; a checkpoint-declaring layer with no valid
+  checkpoint carries its whole journal.
   `ograf-host.js` exposes `serverNow()` (the page's server-time estimate from `TimeSync`) to graphics that ask for it via
   the `v_noplayout` runtime library (in other OGraf hosts that library falls back to `performance.now()` and receipt time).
 - Results from non-authoritative pages are never committed. A disagreement with the authoritative page (program says step 2,
@@ -1148,16 +1284,20 @@ Model check (rev 3, `~/OrgWork/projects/noplayout/design/oracle_model.py`, exact
 120 warm-up, source phases 0, ¼, ½, ¾ and 0.999 of a period, selector "newest paint with `painted_at ≤ T_k − 1 ms`", 2 ms
 paint latency):
 
-| Case | Skips | Repeats | Step errors | Lag band | Rev 2 `Δm ≠ 1` |
-|---|---|---|---|---|---|
-| Mode A, 59.94 (one paint per slot) | 0 | 0 | 0 | ≈ 0 ms | 0 |
-| Mode B, 59.94 from 60 Hz | 10 | 0 | 0 | 16.67 ms (= `P_src`, bound 20.8) | **20** |
-| Mode B, 29.97 from 30 Hz | 10 | 0 | 0 | 33.33 ms (bound 41.7) | **20** |
-| Mode B, 50 and 25 (rates matched) | 0 | 0 | 0 | 0 ms | 0 |
-| Mutation: time base frozen 10 frames (B 59.94) | 10 | 0 | **19** | **165.8 ms** (fail) | 29 |
-| Mutation: one repeated paint (B 59.94) | 11 | **1** | 0 | **32.3 ms** (fail) | 20 |
+| Case | Skips | Repeats | Step errors | (of which Δs ≤ 0) | Lag band | Rev 2 `Δm ≠ 1` |
+|---|---|---|---|---|---|---|
+| Mode A, 59.94 (one paint per slot) | 0 | 0 | 0 | 0 | ≈ 0 ms | 0 |
+| Mode B, 59.94 from 60 Hz | 10 | 0 | 0 | 0 | 16.67 ms (= `P_src`, bound 20.8) | **20** |
+| Mode B, 29.97 from 30 Hz | 10 | 0 | 0 | 0 | 33.33 ms (bound 41.7) | **20** |
+| Mode B, 50 and 25 (rates matched) | 0 | 0 | 0 | 0 | 0 ms | 0 |
+| Mutation: time base frozen 10 frames (B 59.94) | 10 | 0 | **10** | 9 | **165.8 ms** (fail) | 29 |
+| Mutation: one repeated paint (B 59.94) | 11 | **1** | 0 | 0 | **32.3 ms** (fail) | 20 |
 
-Every phase gave the same result. This checks the oracle's arithmetic and thresholds, not CEF. S1a/S1b measure real rAF and
+Every phase gave the same result; `P̂_src` (median, as specified) matched the nominal period in every case. Rev 4 (review
+3 N9): each violating transition is counted once; the "Δs ≤ 0" column is a separate diagnostic, a subset of the step errors
+here, not an extra count (rev 3 added the two and reported 19 for the freeze). No threshold changed and both mutations
+still fail. Model and output: `oracle_model.py`, `oracle_out.rev4.txt` (rev 3's kept as `oracle_model.rev3.py`). This
+checks the oracle's arithmetic and thresholds, not CEF. S1a/S1b measure real rAF and
 paint jitter; if a correct run needs more room, the step tolerance and the band's margin over one source period may be
 widened to the measured jitter (recorded in the ADR), never past a band of 1.5 · `P̂_src`, so a held or stale paint still fails.
 
@@ -1235,7 +1375,7 @@ the M6 soak run on other machines (R9).
 | R21 | Poison action hangs both replicas | K3b in conformance or in the field | §2.13.1 detector | Cold restore without the quarantined action; the instance is named on the On-air strip. Cold-path time is not guaranteed ≤ 2 s (Q1, D-015: best effort). |
 | R22 | iceoryx2 0.10.1 does not fit (API, overflow semantics, dead-publisher cleanup on Windows/macOS) | S8 shows extra copies, blocking writers, or leaked shared memory after `kill -9` | S8 in M1 | Own 4-slot ring over memmap2 + platform shared-memory objects (§3); same protocol (§5.3). |
 | R23 | Standby replicas diverge (non-deterministic graphics) | `ReplicaDiverged` persists after a rebuild | divergence check (§2.13.4) | Instance labelled non-deterministic in Health; recovery for it is "as the standby shows", stated, not hidden. |
-| R24 | A wrong or missing time declaration makes a standby claim **Exact** when it is not, or the shortfall exceeds the flagged `L` (review 2 N1) | any kill → rebuild → second-kill case (§2.13.6) shows an unflagged shortfall, or one above `L` | S7a/S7b, M6 | Undeclared graphics are already worst-case; a wrong sidecar is fixed in the sidecar; an engine bug in fidelity tracking blocks M1. Never shipped as "best effort" |
+| R24 | A wrong or missing time declaration makes a standby claim **Exact** when it is not, or the shortfall exceeds the flagged `L` (review 2 N1; review 3 N7: an undeclared message timer) | any kill → rebuild → second-kill case (§2.13.6) shows an unflagged shortfall, or one above `L`; the declaration audit finds an unlisted timer | S7a/S7b, M6, CI audit | Undeclared graphics are already worst-case; declarations list every timer (E-058) and a CI scan gates them; the recovery-probe negative control proves a false declaration is visible; a wrong sidecar is fixed in the sidecar; an engine bug in fidelity tracking blocks M1. Never shipped as "best effort" |
 | R25 | The paint probe (`invalidate`) does not produce a paint under external begin-frame on some OS, or costs too much on a static scene (E-057) | S7a: a probe unanswered by a healthy static page, or probe repaints visible in the oracle's counters | S7a | Mode A also posts a begin-frame with the probe; second variant `was_resized()` (forces a full-view repaint; also in the cef 156.7.0 `ImplBrowserHost` bindings). If neither works on that OS, K2g there is caught only by the slower detectors (K4's UI-thread latency, K1/K2 exits) and marked **partial** for K2g on that OS in §6.1; the rev 2 "rAF advancing" rule is not brought back |
 
 ### 6.1 Fallback completion status (review 1 F9)
@@ -1339,12 +1479,14 @@ Tasks:
 7. **Spike S1a** (paint-level pacing, A vs B, per OS, 59.94 and 50; provisional, §5.6) and **S2** (readback + copy +
    conversion cost at 1080p and 2160p). Provisional mode recorded in STATUS.md and an ADR draft; the ADR is final in M2.
 8. Supervisor: active + warm standby per channel, failure kinds K1–K4 and K6 (§2.13.1), warm promotion, standby rebuild, cold
-   restore, the per-page fidelity record and standby eligibility (§2.13.3a, E-052) with the Basketball sidecar declarations,
+   restore, the per-page fidelity record and standby eligibility (§2.13.3a, E-052, E-058) with the Basketball sidecar
+   declarations and their CI declaration audit,
    the loop guard. **Spike S7a** (recovery, paint level): the harness injects K1, K2, K2g, K3a and K4 with the **Basketball
-   on-air set** (scorebug, ticker cycling, sponsor bug) and the recovery-probe fixture loaded; t1 = the first output slot
+   on-air set** (scorebug, ticker cycling, sponsor bug) and the two recovery-probe fixtures loaded; t1 = the first output slot
    whose paint decodes (oracle + Basketball reference crops) to the expected state. 20 runs per kind per OS, plus the cold
    path with the standby disabled. Includes the `addPoints` ×257 and `startClock` cases, the kill → rebuild → wait → second
-   kill cases 1–3 and 5, and the static-scene control (§2.13.6). K2g is injected as a GPU-process stall (`SIGSTOP` of the
+   kill cases 1–3 and 5–8 (8 with a second CEF page), the recovery-probe declaration cases incl. the negative control, and
+   the static-scene control (§2.13.6). K2g is injected as a GPU-process stall (`SIGSTOP` of the
    GPU child on Linux/macOS, `NtSuspendProcess` on Windows) and checked to fire with rAF advancing and with rAF stopped;
    S7a also confirms that `BrowserHost::invalidate` under `external_begin_frame_enabled` yields a paint on each OS (§2.4).
 9. Conformance harness (`tests/conformance`): every EBU example and every Basketball graphic, unmodified, through load → play
@@ -1510,7 +1652,9 @@ Tasks:
 2. Generated `graphic.mjs`: a small embedded runtime (Web Animations API) with no external dependencies; segments map to
    `playAction` steps and `stopAction`; update transitions; custom actions jump to a segment or set a field; the declared
    recovery checkpoint (`v_noplayout`, §2.13.4) and the **Designed time model** (all time state derived from action `ts`
-   and `serverNow()`, E-056), so Designed graphics restore exactly, internal clocks included; the property test of §2.13.4.
+   and `serverNow()`, E-056), so Designed graphics restore exactly, internal clocks included; the property test of §2.13.4,
+   and the load-frontier path with its deterministic edge tests and `fixtures/designed/checkpoint-probe` (§2.13.4 step 4,
+   §2.13.6, E-059).
 3. Elements and properties (UI §3.2 Properties rows): Rectangle fill, linear gradient, border, corner radius; Text font, size,
    weight, tracking, alignment, shrink to fit; Image file and fit; Clock count up/down, formats M:SS and SS.t, internal or
    data-driven; all elements X/Y/W/H and opacity; Advanced rotation, blend, mask (on Group), exact anchor, text overflow
@@ -1708,6 +1852,11 @@ smoke-tested under Rosetta, labelled "community-tested" in the README.
   output's row in Outputs for a late-joined page; (10) "Settings not fully applied" (degraded) and the two post-commit
   warnings, §2.11; (11) "NDI output restarted: a sender stopped responding", §5.4; (12) "Renderer can't draw" after the
   loop guard, §2.13.1. Engineering adds no screen for any of these; the placement is his.
+- **Usopp (rev 4 additions, same addendum):** (13) flags are now **per timer**, so (8) and (9) name the timer, not only the
+  graphic: a clock with its bound ("Scorebug clock up to 8 min 2 s behind") and any other timer without one ("Scorebug
+  timed message may differ", "Ticker item may differ"), possibly two flags on one graphic; the quoted strings are
+  engineering placeholders for his wording; (14) Health's amber "checkpoint discarded" note for a Designed graphic,
+  §2.13.4.
 - **Robin:** no new research needed for M0–M4.5. Before the first public release: re-diff the NDI 6.4 EULA against 6.3.2 (her
   noted gap). Before the private switch: GitHub Actions artifact-storage quota and price for a private repo on the Free plan
   (§8.2).
@@ -1725,12 +1874,16 @@ until the M1/M2 spikes measure them.
 **Q1. Recovery time. Decided: (a).**
 - *Guaranteed:* a single failure of the active renderer (crash, hang, killed process, GPU stall) while the standby is
   **Exact** (§2.13.3a) brings the same picture back, running clocks included, in *est.* 0.15 s for a crash and *est.* 0.65 s
-  for a hang; fail lines 0.5 s and 1 s, IDEA's limit 2 s. Output never goes black (the last frame holds). The standby is
-  Exact for the first failure of a session, and again after any rebuild once every graphic on air is data-fed, declared
-  time-free, checkpointed, or was taken after the rebuild.
+  for a hang; fail lines 0.5 s and 1 s, IDEA's limit 2 s. The output process survives a renderer failure, so the last
+  good frame holds meanwhile and output never goes black. The standby is Exact for the first failure of a session, and
+  again after any rebuild once no graphic on air has an exposed timer (data-fed, declared time-free, checkpointed, or
+  taken after the rebuild; §2.13.3a rev 4).
 - *Best effort, measured:* when no standby is promotable (a second failure inside the *est.* 0.6–2.5 s rebuild window, a
-  graphic bug that freezes both copies, an engine restart), the channel rebuilds from scratch in *est.* 0.6–2.5 s with the
-  Basketball show; the last frame holds meanwhile.
+  graphic bug that freezes both copies), the channel rebuilds from scratch in *est.* 0.6–2.5 s with the Basketball show;
+  the output process holds the last frame meanwhile. **An engine restart (K7) is different** (rev 4, review 3 Q1 wording):
+  the output and renderer processes outlive the engine only for their 3 s orphan grace (§4.2) while the engine's restart
+  budget is 5 s (R17), so the last frame holds for at most those 3 s, after which the NDI source disappears until the
+  restarted engine brings it back.
 - *Cost of the spare:* one more browser per channel, *est.* 150–400 MB RAM and 15–30 % more CPU per channel (R20).
 - *Not chosen:* (b) a third pre-started browser to cover double failures (more RAM; still can't cover a freeze-both-copies
   bug); (c) no spare (≈ 1–3 s recoveries that also lose self-run clocks on the first failure).
@@ -1750,7 +1903,11 @@ until the M1/M2 spikes measure them.
   On-air strip flags the instance with the bound. Nothing is lost silently.
 - *Always exact:* clocks fed from data (OES → `gameClock`, `clockRunning: false`) and every graphic built in noPlayout's
   editor (declared checkpoints and a time model based on server timestamps, §2.13.4). That is the recommended way to run
-  live clocks; for the Basketball package, feeding the clock from OES avoids the issue entirely.
+  live clocks; for the Basketball package, feeding the clock from OES avoids the issue entirely. Data-fed applies to the
+  clock only: the same scorebug's timed message (`showMessage` with `autoHideSeconds > 0`) and the ticker's dwell are other
+  timers in the graphic. A rebuilt copy may show an expired message again for its duration, or a different ticker item;
+  each is flagged by name ("Scorebug timed message may differ"), never as a clock shortfall, and the data-fed clock stays
+  reported exact (rev 4, review 3 N7, §2.13.3a). Using `autoHideSeconds: 0` with an explicit `hideMessage` avoids it.
 - *Not chosen:* (b) require live-clock graphics to be data-driven or checkpointed (would refuse otherwise valid OGraf
   graphics). S9 may later remove most of the limitation; nothing depends on it.
 
@@ -1769,6 +1926,26 @@ macOS checks after merge; native arm64 `preflight` on PRs) and a $60/month Actio
 GPU for the soak. Timing and recovery tests also need a named Linux box, and native Intel-Mac timing needs a real Intel Mac
 (the CI runner is a VM). **Recommend:** name the Linux box now (any desktop with a discrete GPU), and accept CI-runner-only
 coverage for Intel Macs (functional, not timing) given the 2027 sunset. Needed before M1's S7a/S1a runs on Linux.
+
+## Review 3 disposition
+
+Scoped cold review 3 (`~/OrgWork/projects/noplayout/reviews/plan-review-3.md`, verdict REWORK) is accepted in full;
+nothing is rebutted. N2, N3, N4 and N6 were closed there, D-015's scope accepted; rev 4 changes only the items below. Each
+row answers that finding's "Required correction" (or "Correction") clause by clause.
+
+| Finding | Required correction (review's words, condensed) | Change | Section |
+|---|---|---|---|
+| N7 [blocking] scorebug declaration misses its auto-hide timer and can falsely certify Exact | include every self-timed scorebug entry point (conservatively `showMessage` is enough) | Single-trigger `selfTimedAfter` withdrawn. Declarations list **every timer** with its entry points (`time.timers[]`, E-058); scorebug sidecar declares `clock` (`startClock`, `clockRunning`) and `message` (`showMessage` with `autoHideSeconds > 0`; a missing/non-numeric value counts as arming, so the condition can only narrow) | §2.13.3a, E-058, E-052 (amended) |
+|  | distinguish an exact data-fed clock from a different inexact timer in that instance's flag | Exposure and flags are **per timer**: `clock` kind carries the `L` bound, `timer` kind reads "may differ"; standby indicator, On-air strip and web rows name the timer ("Scorebug timed message may differ"); a data-fed clock is never flagged because the message timer is exposed | §2.13.3a, Q2, §9 Usopp (13) |
+|  | add expired-message replay and immediate post-rebuild promotion / late-join cases | §2.13.6 kill → rebuild cases 6 (expired message, second K1 ≤ 100 ms after `Synced`; standby must never claim Exact, clock must stay unflagged), 7 (`autoHideSeconds: 0` control, Exact) and 8 (late join ≤ 100 ms after `Synced`, both variants); run in M1 S7a | §2.13.6, §7 M1 task 8 |
+|  | keep the graphic unmodified | Unchanged: declarations live in `noplayout.recovery.json`; the package stays at D-012's sha256 | §2.13.3a |
+|  | reconcile the recovery-probe variants | Two fixtures: `probe-static` (no timer, really time-free) declared `time: none` → Exact; `probe-timed` undeclared → Ready, inexact; `probe-timed` with a **false** `time: none` sidecar is a **negative control** asserting the visible error, never counted as an Exact success | §2.13.6, R24 |
+|  | (task scope) audit the other five Basketball graphics | Source audit table: ticker `dwell` timer (armed only while visible, so `playAction`); matchup, stat card, lower third, sponsor bug `time: none` (finite animations only); base-library and preview-page matches explained. Kept honest by a **CI declaration audit** (`noplayout.recovery.audit.json`, fails on any unlisted timer pattern or stale entry) | §2.13.3a, §7 M1 task 8, R24 |
+| N8 [should] no-checkpoint path and two omitted edge tests | define an initial checkpoint after load, or exact timestamped full replay until the first checkpoint | **Load frontier** (E-059): until the first valid checkpoint, restore = `load` at its original `loadTs` + the whole journal with original `ts`, `replay: true`; whole journal kept for checkpoint-declaring instances; `Snapshot` layers carry `loadTs` | §2.13.2, §2.13.3, §2.13.4 step 4, §4.3 |
+|  | state the fidelity/flag outcome, including invalid-checkpoint fallback for Designed graphics | New fidelity `replayed-timed` (counts as exact, no flag); outcome table for valid / none yet / all invalid; an invalid checkpoint is discarded with `checkpoint_discarded` in Health, the instance is re-loaded in that page and restored from an older checkpoint or the load frontier. Rev 3's "fallback to flagged `replayed`" withdrawn, which removes the label contradiction | §2.13.3a, §2.13.4 steps 2 and 4, E-056 (amended) |
+|  | deterministic tests: (a) death/rebuild and web join before the first checkpoint; (b) overlapping pair resolving out of order during a checkpoint request, asserting the cut and exactly-once tail | Load-frontier edge tests 1–3: (1) K1, standby rebuild, cold path, web join and K7 before any checkpoint, all exact and unflagged; (2) forged / failing checkpoints fall back exactly; (3) `checkpoint-probe` latch test, A/B held, B resolves first → `CheckpointDeferred`, cut only after A, `frontierSeq = n + 1`, A/B/C applied exactly once (plus a variant). The cut rule now states that it waits for **no** unresolved action of `i` | §2.13.4 step 1, §2.13.6, §7 M5 task 2 |
+| N9 [minor] frozen-time model double-counts nine step violations | count a violating transition once, or report the two diagnostics separately; update the table; keep the ideal controls and both failing mutations; widen no tolerance | `oracle_model.py` counts the step predicate once per transition, uses the median `P̂_src` as §5.5 specifies, and reports `Δs ≤ 0` as a separate column. Re-run: freeze mutation **10** step errors (9 of them Δs ≤ 0), band 165.8 ms, still fails; repeat mutation still fails; every ideal control unchanged; no threshold changed. Matches the review's independent count | §5.5; `~/OrgWork/projects/noplayout/design/oracle_model.py`, `oracle_out.rev4.txt` |
+| Q1 wording (exit criterion, not a finding) | scope the "last frame holds" statement to a surviving output process / its 3 s grace | Q1 now says the last frame holds through renderer failures (the output process survives), and that on an engine restart (K7) it holds only for the 3 s orphan grace against a 5 s restart budget, after which the NDI source disappears until the engine is back. The decision itself is unchanged | Q1 |
 
 ## Review 2 disposition
 
@@ -1808,6 +1985,23 @@ All eleven findings are accepted; none is rebutted. "Section" is where the chang
 | API audit notes (`FrameRate::new`/`connection_count` return `Result`; no borrowed builder into owned submit; backpressure) | Written into the NDI section | §2.10.1 |
 
 ## Process note
+- Tier: rev 4 written by Franky on the frontier model (card t_e861eb8b), no subagents. Inputs: scoped cold review 3
+  (`~/OrgWork/projects/noplayout/reviews/plan-review-3.md`, Codex gpt-6.1-sol), rev 3 (d743711). Scope held to N7, N8,
+  N9 and the Q1 wording the review's exit line names; no other section was reopened.
+- Verified myself for rev 4 on 2026-11-26, in the unmodified package sources: the scorebug's `showMessage` arms
+  `setTimer(… hideMessage …, autoHideSeconds * 1000)` only when `autoHideSeconds > 0` (manifest: number, 0–600, default 0);
+  the scorebug's 50 ms `setRepeat` tick is armed at the initial `load` and only counts while `running`; the ticker's
+  `_schedule` returns early unless visible, unpaused and with ≥ 2 items, and `nextItem`/`previousItem` while hidden only
+  move the index; the matchup, stat card, lower third and sponsor bug use only fixed-duration `anim`/`stagger`/`countUp`
+  calls; `lib/ograf-base.mjs`'s only other timer is `whenImagesReady`'s 3 s bound. The N9 re-count: `oracle_model.py` run
+  after the fix (output `oracle_out.rev4.txt`; rev 3's model kept as `oracle_model.rev3.py`).
+- Not verified, stated as such: I did not re-run the reviewer's Chromium reproduction of the expired message; N7 is
+  accepted on the review's executed evidence and my reading of the same code. The declaration audit scan is designed here,
+  not built; its pattern list is a tripwire, and the recovery tests remain the proof.
+- Not done: no code; no build cards (Rayleigh creates them after Caleb approves); nothing pushed. This is the last design
+  round: Rayleigh checks N7–N9 against review 3's "Required correction" text, then takes the plan to Caleb.
+
+Rev 3 process note (t_184845fe), kept for the record:
 - Tier: rev 3 written by Franky on the frontier model (card t_184845fe), no subagents. Inputs: cold review 2
   (`~/OrgWork/projects/noplayout/reviews/plan-review-2.md`, Codex gpt-6.1-sol), Caleb's D-015 (relayed by Rayleigh on the
   card, mid-run, and merged from `main` at 4e4e538 before this commit), rev 2 (c90763d).
