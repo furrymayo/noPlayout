@@ -128,6 +128,8 @@ struct Conn {
     inc: Option<u64>,
     synced: Option<u64>,
     last_beat: Option<(u64, f64, u64)>,
+    /// When the last beat (or the registration) arrived: K3a detection (§2.13.1).
+    beat_at: std::time::Instant,
     /// A standby program page's results for still-pending seqs, used at promotion (§2.14).
     held: BTreeMap<u64, PageResult>,
 }
@@ -424,6 +426,7 @@ impl ChannelState {
                 inc,
                 synced: None,
                 last_beat: None,
+                beat_at: std::time::Instant::now(),
                 held: BTreeMap::new(),
             },
         );
@@ -769,6 +772,7 @@ impl ChannelState {
             } => {
                 if let Some(c) = self.conns.get_mut(&conn) {
                     c.last_beat = Some((n, lag_ms, last_applied_seq));
+                    c.beat_at = std::time::Instant::now();
                 }
             }
             HostUp::Synced { seq } => {
@@ -921,6 +925,7 @@ impl ChannelState {
                 last_beat: c.last_beat.map(|b| b.0),
                 lag_ms: c.last_beat.map(|b| b.1),
                 last_applied_seq: c.last_beat.map(|b| b.2),
+                beat_age_ms: c.beat_at.elapsed().as_millis() as u64,
             })
             .collect()
     }
@@ -935,4 +940,6 @@ pub struct PageView {
     pub last_beat: Option<u64>,
     pub lag_ms: Option<f64>,
     pub last_applied_seq: Option<u64>,
+    /// Milliseconds since this page last beat (or registered).
+    pub beat_age_ms: u64,
 }

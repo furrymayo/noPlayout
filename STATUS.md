@@ -126,7 +126,18 @@ missing glyphs. Its shape render differs from macOS only at antialiased geometry
 on linux and macos-arm64, informational on windows and macos-x64 (done-when (a) allows
 Windows by `preflight`). The output gained `NOPLAYOUT_DUMP_AFTER`, a dump start gate.
 
-Still pending: M1 task 8 (supervisor/recovery and S7a). M1 stays open. Windows/Linux
+Task 8 (supervisor/recovery): `crates/noplayout-core/src/supervisor.rs` runs an active and a
+warm standby renderer. It handles K1, K2, K2g, K3a and K4 (whole-process heartbeat), with warm
+promotion behind the bus barrier, standby rebuild, cold restore and the §2.13.1 loop guard
+(same failure within 10 s → cold 2/5/10 s → red). State and recovery records are in
+`/api/v1/health`. CI checks it functionally (`cargo xtask conformance recovery`): warm K1
+and K3a, loop guard to cold, and cold without a standby. The graphic stays loaded through
+all of them. See `docs/spikes/S7a-recovery.md`. TODO(M1), not built yet: the S7a paint-level
+timing harness and its M2-mini run (done-when (d) **pending**), K2/K2g injection, the
+static-scene control, K3b, K4's UI-thread probe, K5/K6 output recycling, the recovery
+fidelity record/eligibility (E-052, E-058) and the kill → rebuild → second-kill cases.
+
+M1 stays open. Windows/Linux
 functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
 

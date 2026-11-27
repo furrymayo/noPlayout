@@ -1,6 +1,6 @@
-# Conformance and pixel tests (M1 tasks 9 and 10)
+# Conformance, pixel and recovery tests (M1 tasks 9, 10 and 8)
 
-`cargo xtask conformance [--release] [conformance | pixels] [--only NAME] [--bless]` builds the
+`cargo xtask conformance [--release] [conformance | pixels | recovery] [--only NAME] [--bless]` builds the
 engine, output process and CEF renderer and runs `noplayout-conformance` against them. On Linux,
 run it under `xvfb-run -a`. The host runtime must be built (`cargo xtask web`). CI runs it on
 every lane; it is required on linux and macos-arm64.
@@ -38,3 +38,10 @@ Failed or missing goldens write a candidate to `target/conformance/candidates/`,
 uploads as the `conformance-<lane>` artifact. To add or refresh one OS's goldens, take the
 candidates from that lane's artifact (or run `--bless` on that OS). Review them by eye, then
 commit them.
+
+## Recovery (task 8, functional)
+
+The Basketball scorebug, loaded and playing, through K1 and K3a with a ready standby (warm
+promotion), two K1s within 10 s (loop guard: warm then cold), and K1 with
+`NOPLAYOUT_STANDBY=0` (cold). The graphic must stay loaded through each; timing is S7a's
+(`docs/spikes/S7a-recovery.md`).

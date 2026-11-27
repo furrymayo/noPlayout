@@ -100,6 +100,12 @@ impl Engine {
             .ok_or_else(|| format!("import {}: {v}", dir.display()))
     }
 
+    /// The supervisor's view from `/api/v1/health` (M1 task 8).
+    pub fn supervisor(&self) -> Result<Value, String> {
+        let h = client::get_health(self.port, Duration::from_secs(5)).map_err(|e| e.to_string())?;
+        h.supervisor.ok_or_else(|| "no supervisor in health".into())
+    }
+
     /// Bytes of the engine log so far, to cut out one graphic's console messages.
     pub fn log_len(&self) -> u64 {
         std::fs::metadata(&self.log).map(|m| m.len()).unwrap_or(0)

@@ -17,6 +17,7 @@ pub mod logging;
 pub mod paths;
 pub mod program;
 pub mod selftest;
+pub mod supervisor;
 pub mod time;
 
 /// Default HTTP port (IDEA §4.2: web output port, default 8686).

@@ -1,4 +1,4 @@
-//! `noplayout-conformance [conformance | pixels | all] [--bless] [--only NAME] [--bin DIR]
+//! `noplayout-conformance [conformance | pixels | recovery | all] [--bless] [--only NAME] [--bin DIR]
 //! [--host DIR]`: M1 tasks 9 and 10 against the built engine, output process and CEF renderer
 //! (`cargo xtask conformance` builds them first). Exit 0 when everything passes. Candidate PNGs
 //! of failed or missing goldens, and `report.json`, go to `target/conformance/`; `--bless`
@@ -7,6 +7,7 @@
 mod conformance;
 mod engine;
 mod pixels;
+mod recovery;
 #[cfg(test)]
 mod tests;
 
@@ -63,7 +64,7 @@ fn args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     while let Some(s) = it.next() {
         match s.as_str() {
-            "conformance" | "pixels" | "all" => a.what = s,
+            "conformance" | "pixels" | "recovery" | "all" => a.what = s,
             "--bless" => a.bless = true,
             "--only" => a.only = it.next(),
             "--bin" => a.bin = it.next().ok_or("--bin needs a value")?.into(),
@@ -105,7 +106,7 @@ fn run() -> Result<bool, String> {
         report.push(json!({"name": name, "failures": fails}));
     };
 
-    if a.what != "pixels" {
+    if a.what == "all" || a.what == "conformance" {
         let mut graphics: Vec<PathBuf> = EBU
             .iter()
             .map(|n| a.root.join("third_party/ograf/v1/examples").join(n))
@@ -137,7 +138,7 @@ fn run() -> Result<bool, String> {
         }
     }
 
-    if a.what != "conformance" {
+    if a.what == "all" || a.what == "pixels" {
         let os = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
         let fx = a.root.join("tests/conformance/fixtures");
         let bb = a.root.join("fixtures/basketball-ograf-package");
@@ -245,6 +246,24 @@ fn run() -> Result<bool, String> {
                 &fails,
                 " (40 slots across the entry animation)",
             );
+        }
+    }
+
+    if a.what == "all" || a.what == "recovery" {
+        let sb = a
+            .root
+            .join("fixtures/basketball-ograf-package/bball-scorebug");
+        for (n, f) in [
+            (
+                "warm-and-loop-guard",
+                recovery::warm as fn(&Path, &Path, &Path, &Path) -> recovery::Outcome,
+            ),
+            ("cold-no-standby", recovery::cold),
+        ] {
+            if want(n) {
+                let o = f(&a.bin, &a.host, &work, &sb);
+                line(o.name, &o.failures, "");
+            }
         }
     }
 

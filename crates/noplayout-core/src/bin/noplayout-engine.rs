@@ -9,8 +9,8 @@ use noplayout_core::children::{self, Kind, Launch};
 use noplayout_core::health::HealthState;
 use noplayout_core::http::{self, ApiState};
 use noplayout_core::instance::InstanceLock;
+use noplayout_core::supervisor::{self, Supervisor};
 use noplayout_core::{DEFAULT_PORT, ENV_UI_TOKEN, logging, paths, selftest};
-use std::ffi::OsString;
 use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -209,7 +209,7 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
     let server_stop = Arc::new(Notify::new());
     let server = tokio::spawn(http::serve(listener, state, server_stop.clone()));
 
-    // One channel in M0, spawn order per PLAN §4.2: output process first, then the renderer.
+    // Spawn order per PLAN §4.2: the output process first, then the renderers (supervisor).
     let output = children::launch(
         Launch {
             kind: Kind::Output,
@@ -219,79 +219,45 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
         health.output(),
     )
     .await
-    .ok();
-    let cache = paths::cef_cache_dir(&data, channel, "a");
-    let renderer = children::launch(
-        Launch {
-            kind: Kind::Renderer,
-            exe: children::default_exe(Kind::Renderer),
-            args: vec![
-                "--channel".into(),
-                channel.into(),
-                "--slot".into(),
-                "a".into(),
-                OsString::from("--cache-dir"),
-                cache.into_os_string(),
-            ],
-        },
-        health.renderer(),
-    )
-    .await
-    .ok();
+    .ok()
+    .map(Arc::new);
     let epoch_mono_ns = match output.as_ref().map(|o| &o.hello) {
         Some(noplayout_proto::Hello::Output(h)) => h.epoch.mono_ns,
-        // TODO(M1): task 8's supervisor waits for the output process; until then a renderer
-        // without one paces from the engine's own clock.
+        // TODO(M1): without an output process (it failed to start) the renderers pace from the
+        // engine's own clock; K5/K6 output restarts are not in M1 (STATUS.md).
         _ => noplayout_frames::clock::mono_ns(),
     };
-    let mut renderer_events = None;
     let mut output_events = output.as_ref().and_then(|o| o.take_events());
-    if let Some(r) = &renderer {
-        renderer_events = r.take_events();
-        let spec = noplayout_core::program::ProgramSpec {
-            channel,
-            run: &run_id,
+    let mut sup = Supervisor::new(
+        supervisor::Env {
+            channel: channel.into(),
+            run: run_id,
             port: bound.port(),
+            data: data.clone(),
             format: noplayout_core::program::format_from_env(),
             mode: noplayout_core::program::drive_mode_from_env(),
             epoch_mono_ns,
-            active: true,
-        };
-        let mode = spec.mode;
-        match noplayout_core::program::open(&bus, &rings, r, spec).await {
-            Ok(o) => {
-                tracing::info!(inc = o.inc, ring = %o.ring, "program page configured");
-                if let Some(out) = &output
-                    && let Err(e) = out
-                        .send(noplayout_proto::Down::Activate {
-                            ring: o.ring.clone(),
-                            inc: o.inc,
-                            mode,
-                        })
-                        .await
-                {
-                    tracing::error!("cannot activate the ring on the output process: {e}");
-                }
-            }
-            Err(e) => tracing::error!("cannot configure the program page: {e}"),
-        }
-    }
-    let renderer_event = async |rx: &mut Option<
+            bus: bus.clone(),
+            rings: rings.clone(),
+        },
+        health.clone(),
+        output.clone(),
+    );
+    sup.start().await;
+    let output_event = async |rx: &mut Option<
         tokio::sync::mpsc::UnboundedReceiver<noplayout_proto::Event>,
     >| match rx {
         Some(rx) => rx.recv().await,
         None => std::future::pending().await,
     };
 
-    // Dev-control faults and bus events. TODO(M1): task 8's supervisor owns these (standby,
-    // promotion, rebuild); until then a fault acts on the single renderer directly.
     let term = terminate_signal();
     tokio::pin!(term);
     loop {
         tokio::select! {
             _ = stop.notified() => { tracing::info!("stopping: API request"); break; }
             signal = &mut term => { tracing::info!("stopping: {signal}"); break; }
-            Some(f) = fault_rx.recv() => match (f, &renderer) {
+            Some(f) = fault_rx.recv() => match (f, sup.active_handle()) {
                 (noplayout_core::ctl::Fault::KillRenderer { .. }, Some(r)) => {
                     if let Err(e) = r.kill().await { tracing::warn!("kill-renderer: {e}"); }
                 }
@@ -300,33 +266,31 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
                         tracing::warn!("hang: {e}");
                     }
                 }
-                (f, None) => tracing::warn!(?f, "fault ignored: no renderer"),
+                (f, None) => tracing::warn!(?f, "fault ignored: no active renderer"),
             },
-            Some(ev) = bus_rx.recv() => tracing::warn!(?ev, "bus event (no supervisor yet)"),
-            Some(ev) = renderer_event(&mut output_events) => match ev {
+            Some(ev) = bus_rx.recv() => match ev {
+                noplayout_core::hostbus::BusEvent::KillIncarnation { inc, .. } => {
+                    tracing::warn!(inc, "a superseded incarnation tried to register; killing it");
+                    sup.kill_incarnation(inc).await;
+                }
+            },
+            Some(ev) = output_event(&mut output_events) => match ev {
                 noplayout_proto::Event::OutputStats(s) => tracing::debug!(?s, "output stats"),
-                // TODO(M1): the supervisor (task 8) acts on PaintStall (K2g) and SenderStuck
-                // (recycle the output process, K5/K6; incl. the 3 s stuck-sink case of task 6).
-                // M1 so far only logs them.
+                ev @ noplayout_proto::Event::PaintStall { .. } => sup.output_event(&ev).await,
+                // TODO(M1): SenderStuck → recycle the output process (K5/K6, incl. the 3 s
+                // stuck-sink case of task 6) is not in M1; it is logged (STATUS.md).
                 other => tracing::warn!(?other, "output event"),
             },
-            Some(ev) = renderer_event(&mut renderer_events) => match ev {
-                noplayout_proto::Event::Console { error: true, text } => {
-                    tracing::warn!(target: "program_page", "console error: {text}");
-                }
-                noplayout_proto::Event::Console { text, .. } => {
-                    tracing::debug!(target: "program_page", "{text}");
-                }
-                other => tracing::info!(?other, "renderer event"),
-            },
+            w = sup.wait() => sup.handle(w).await,
         }
     }
     drop(bus);
 
-    for child in [renderer, output].into_iter().flatten() {
-        match child.shutdown().await {
-            Ok(status) => tracing::info!(kind = child.kind.label(), %status, "stopped"),
-            Err(e) => tracing::warn!(kind = child.kind.label(), "{e}"),
+    sup.shutdown().await;
+    if let Some(out) = output {
+        match out.shutdown().await {
+            Ok(status) => tracing::info!(kind = out.kind.label(), %status, "stopped"),
+            Err(e) => tracing::warn!(kind = out.kind.label(), "{e}"),
         }
     }
     let _ = rings.sweep();
