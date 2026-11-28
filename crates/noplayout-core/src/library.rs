@@ -2,7 +2,6 @@
 //!
 //! Imports are snapshots: copy into a private staging directory, validate there, hash sorted
 //! paths and bytes, then publish with a same-filesystem rename. Never serve staging files.
-//! TODO(M1): host runtime and dev CLI consumers remain separate tasks; see STATUS.md.
 //! Library storage is engine-owned; callers must not mutate it or source folders during import.
 
 use anyhow::{Context, Result, bail, ensure};

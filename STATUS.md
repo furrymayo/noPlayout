@@ -1,7 +1,6 @@
 # noPlayout status
 
-**Milestone:** M0, workspace skeleton (PLAN.md §7). Plan approved 2026-11-26 (D-016); macOS arm64
-first (D-017).
+**Milestone:** M1 (in progress). Plan approved 2026-11-26 (D-016); macOS arm64 first (D-017).
 
 ## M1 progress (not complete)
 
@@ -137,8 +136,7 @@ timing harness and its M2-mini run (done-when (d) **pending**), K2/K2g injection
 static-scene control, K3b, K4's UI-thread probe, K5/K6 output recycling, the recovery
 fidelity record/eligibility (E-052, E-058) and the kill → rebuild → second-kill cases.
 
-M1 stays open. Windows/Linux
-functional CI evidence is pending the parent PR; timing gates remain pending per D-019. No
+M1 stays open. Timing gates remain pending per D-019. No
 binding timing or memory measurements on the reference M2 mini are claimed here.
 
 Licence gate: the pinned `jsonschema` dependency brings `borrow-or-share` (MIT-0); `deny.toml`
