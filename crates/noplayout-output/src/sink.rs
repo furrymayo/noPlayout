@@ -151,6 +151,9 @@ pub struct Lane {
     pub in_flight_since: AtomicU64,
     pub last_submit_k: AtomicU64,
     pub submitted: AtomicU64,
+    /// The last completed `submit` that took at least `SENDER_SLOW_NS`: `(started, took_ns)`.
+    /// The monitor reports it if its sampling missed the submit while in flight.
+    pub slow_done: Mutex<Option<(u64, u64)>>,
 }
 
 #[derive(Debug, Default)]
@@ -209,13 +212,18 @@ impl Lane {
             .spawn(move || {
                 noplayout_frames::clock::elevate_current_thread();
                 while let Some(snap) = lane.take() {
-                    lane.in_flight_since
-                        .store(noplayout_frames::clock::mono_ns().max(1), Ordering::Release);
+                    let since = noplayout_frames::clock::mono_ns().max(1);
+                    lane.in_flight_since.store(since, Ordering::Release);
                     if let Some(h) = &hook {
                         h(plane, snap.k);
                     }
                     let r = sink.submit(plane, &snap);
                     lane.in_flight_since.store(0, Ordering::Release);
+                    let took = noplayout_frames::clock::mono_ns().saturating_sub(since);
+                    if took >= crate::pacer::SENDER_SLOW_NS {
+                        *lane.slow_done.lock().unwrap_or_else(|p| p.into_inner()) =
+                            Some((since, took));
+                    }
                     lane.last_submit_k.store(snap.k, Ordering::Relaxed);
                     lane.submitted.fetch_add(1, Ordering::Relaxed);
                     if let Err(e) = r {

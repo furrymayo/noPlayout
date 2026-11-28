@@ -105,8 +105,9 @@ pub struct Pacer {
     pub lanes: Vec<(Plane, Arc<Lane>)>,
 }
 
-/// How often the monitor samples each lane. A 300 ms block (injection 8) must always be seen
-/// past [`SENDER_SLOW_NS`]: 50 ms sampling leaves at least one sample in the last 50 ms of it.
+/// How often the monitor samples each lane. A 300 ms block (injection 8) is normally seen in
+/// flight past [`SENDER_SLOW_NS`]; when a loaded host oversleeps a tick and misses it, the
+/// sender's `slow_done` record still raises `SenderStall` on the next tick.
 const MONITOR_TICK: Duration = Duration::from_millis(50);
 /// `OutputStats` once a second.
 const STATS_EVERY: u64 = 20;
@@ -404,11 +405,29 @@ fn monitor(
     events: &Sender<Event>,
 ) {
     let mut reported: Vec<(bool, bool)> = vec![(false, false); lanes.len()];
+    // The `in_flight_since` of the submit each lane last raised `SenderStall` for.
+    let mut stalled_at: Vec<u64> = vec![0; lanes.len()];
     let mut tick = 0u64;
     while !control.stop.load(Ordering::Relaxed) {
         std::thread::sleep(MONITOR_TICK);
         let now = clock::mono_ns();
         for (i, (plane, lane)) in lanes.iter().enumerate() {
+            // A slow submit that finished between samples (an overslept tick on a loaded
+            // host): report it once, after the fact, with its real duration.
+            let done = lane
+                .slow_done
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .take();
+            if let Some((since, took)) = done
+                && since != stalled_at[i]
+            {
+                stalled_at[i] = since;
+                let _ = events.send(Event::SenderStall {
+                    plane: plane.label().into(),
+                    in_flight_ms: took / 1_000_000,
+                });
+            }
             let since = lane.in_flight_since.load(Ordering::Acquire);
             let age = if since == 0 {
                 0
@@ -429,6 +448,7 @@ fn monitor(
                 });
             } else if age >= SENDER_SLOW_NS && !*slow {
                 *slow = true;
+                stalled_at[i] = since;
                 let _ = events.send(Event::SenderStall {
                     plane: plane.label().into(),
                     in_flight_ms: ms,
