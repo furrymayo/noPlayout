@@ -39,11 +39,40 @@ pub fn post_shutdown(port: u16, token: &str, timeout: Duration) -> Result<(), Cl
     .map(|_| ())
 }
 
+/// `POST /api/v1/internal/ctl` (dev control) with the launch token; returns the JSON reply.
+pub fn post_ctl(
+    port: u16,
+    token: &str,
+    req: &crate::ctl::Ctl,
+    timeout: Duration,
+) -> Result<String, ClientError> {
+    let body = serde_json::to_string(req).map_err(|e| ClientError::Malformed(e.to_string()))?;
+    request_body(
+        port,
+        "POST",
+        "/api/v1/internal/ctl",
+        &[(TOKEN_HEADER, token), ("content-type", "application/json")],
+        body.as_bytes(),
+        timeout,
+    )
+}
+
 fn request(
     port: u16,
     method: &str,
     path: &str,
     headers: &[(&str, &str)],
+    timeout: Duration,
+) -> Result<String, ClientError> {
+    request_body(port, method, path, headers, &[], timeout)
+}
+
+fn request_body(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
     timeout: Duration,
 ) -> Result<String, ClientError> {
     let unreachable = |source| ClientError::Unreachable { port, source };
@@ -57,13 +86,15 @@ fn request(
         .map_err(unreachable)?;
     let mut req = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\
-         Content-Length: 0\r\n"
+         Content-Length: {}\r\n",
+        body.len()
     );
     for (k, v) in headers {
         req.push_str(&format!("{k}: {v}\r\n"));
     }
     req.push_str("\r\n");
     stream.write_all(req.as_bytes()).map_err(unreachable)?;
+    stream.write_all(body).map_err(unreachable)?;
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).map_err(unreachable)?;
     parse_response(&raw)

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 
 /// Control protocol version. Bump on any incompatible change to the types below.
-pub const PROTO_VERSION: u32 = 1;
+pub const PROTO_VERSION: u32 = 2;
 
 /// Largest accepted frame body (1 MiB, PLAN §4.1).
 pub const MAX_FRAME: usize = 1024 * 1024;
@@ -37,6 +37,131 @@ pub enum Down {
     Ping { seq: u64 },
     /// Close everything and exit with status 0.
     Shutdown,
+    /// Fault injection K3 (dev `ctl hang`, S7a): block the program page's main thread for `ms`.
+    HangPage { ms: u32 },
+    /// Renderer: what to paint and where (sent once, after `Hello`).
+    Configure(RendererConfig),
+    /// Renderer: active (full rate) or standby (every 6th slot / 10 fps), §2.4. Sent at promotion.
+    Role { active: bool },
+    /// Output: read paints from this renderer incarnation's ring from now on (§2.4a, §2.13).
+    Activate {
+        ring: String,
+        inc: u64,
+        mode: DriveMode,
+    },
+}
+
+/// Video format of a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Format {
+    pub width: u32,
+    pub height: u32,
+    pub rate_num: u32,
+    pub rate_den: u32,
+}
+
+impl Format {
+    pub const HD1080P5994: Format = Format {
+        width: 1920,
+        height: 1080,
+        rate_num: 60000,
+        rate_den: 1001,
+    };
+}
+
+/// How the renderer is paced (PLAN §5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DriveMode {
+    /// External begin-frame at `T_k − lead`.
+    A,
+    /// Free-running at `ceil(fps)`.
+    B,
+}
+
+/// Everything a renderer needs to open its program page (PLAN §2.4, §2.14).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RendererConfig {
+    pub format: Format,
+    pub mode: DriveMode,
+    /// The output process's epoch (machine-wide monotonic ns), for mode A deadlines.
+    pub epoch_mono_ns: u64,
+    /// Mode A: begin-frame lead before `T_k`, ns (one frame to start; S1 tunes it).
+    pub lead_ns: u64,
+    /// Program page URL on the engine (`/host/renderer.html?channel=…&role=program`).
+    pub url: String,
+    /// Page identity handed to the page by script injection after load, never in the URL
+    /// (E-046): the page's incarnation and single-use registration token.
+    pub page_inc: u64,
+    pub page_token: String,
+    /// Paint ring object name; the engine has recorded it in its registry already.
+    pub ring: String,
+    pub active: bool,
+}
+
+/// Renderer events the engine acts on (PLAN §2.4, §2.13.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Event {
+    /// The program page finished loading (main frame), with its HTTP status.
+    PageLoaded {
+        http_status: i32,
+    },
+    /// CEF's render process for the program page died (failure kind K2).
+    PageTerminated {
+        status: String,
+    },
+    /// A console message from the program page (conformance asserts zero errors).
+    Console {
+        error: bool,
+        text: String,
+    },
+    /// The renderer could not do what `Configure` asked (ring, browser); it stays up.
+    ConfigureFailed {
+        why: String,
+    },
+    /// Output: the active ring could not be opened.
+    ActivateFailed {
+        ring: String,
+        why: String,
+    },
+    /// Output, K2g (E-057): a paint probe has been outstanding 250 ms with no newer paint.
+    PaintStall {
+        inc: u64,
+        probe_seq: u64,
+    },
+    /// Output, K5 (§5.4): a plane's `submit` has been in flight 250 ms (slow) or 2 s (stuck).
+    SenderStall {
+        plane: String,
+        in_flight_ms: u64,
+    },
+    SenderStuck {
+        plane: String,
+        in_flight_ms: u64,
+    },
+    /// Output: once a second.
+    OutputStats(OutputStats),
+    /// Output: `--frames N` slots dumped; the dump is complete and closed.
+    DumpComplete {
+        frames: u64,
+    },
+}
+
+/// Output-side counters (§5.3, §5.4). Each is cumulative since the output process started.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputStats {
+    pub slots: u64,
+    /// Slots that resent the previous snapshot (no newer paint).
+    pub held: u64,
+    /// Ready paints freed unread because a newer one was taken.
+    pub superseded: u64,
+    /// Slots dropped because the pacer woke after `T_k + period/2`.
+    pub slots_skipped: u64,
+    pub submit_blocked: u64,
+    pub pair_partial: u64,
+    pub ring_overwrites: u64,
+    /// Pacer wake-up lateness, µs: worst since start.
+    pub late_max_us: u64,
+    pub last_paint_seq: u64,
+    pub active_inc: u64,
 }
 
 /// Messages from a child process to the engine.
@@ -46,6 +171,8 @@ pub enum Up {
     Hello(Hello),
     /// Heartbeat answer.
     Pong(Pong),
+    /// Something happened the engine should know about now, not at the next heartbeat.
+    Event(Event),
 }
 
 /// The first message a child sends.
@@ -104,7 +231,8 @@ pub enum HelloError {
 /// The output process's channel clock epoch (PLAN §4.2, §5.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Epoch {
-    /// Monotonic clock reading at the epoch, nanoseconds (process-local origin).
+    /// Machine-wide monotonic clock at the epoch, ns (`noplayout_frames::clock::mono_ns`), so
+    /// renderers compute the same `T_k`.
     pub mono_ns: u64,
     /// UTC at the epoch in 100 ns units since the Unix epoch (NDI timecode units).
     pub utc_100ns: i64,

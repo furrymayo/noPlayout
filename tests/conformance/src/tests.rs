@@ -1,0 +1,103 @@
+use crate::conformance::sample;
+use crate::pixels::{H, Image, W, check_ramp, diff};
+use serde_json::json;
+
+#[test]
+fn sample_prefers_defaults_then_enums_then_types() {
+    let s = json!({"type": "object", "properties": {
+        "team": {"type": "string", "enum": ["away", "home"], "default": "home"},
+        "side": {"type": "string", "enum": ["l", "r"]},
+        "points": {"type": "integer", "minimum": -3},
+        "n": {"type": "number"},
+        "on": {"type": "boolean"},
+        "items": {"type": "array"},
+        "label": {"type": "string"},
+        "nested": {"type": "object", "properties": {"x": {"type": "integer", "default": 7}}}
+    }});
+    assert_eq!(
+        sample(&s),
+        json!({"team": "home", "side": "l", "points": -3, "n": 1, "on": false,
+               "items": [], "label": "", "nested": {"x": 7}})
+    );
+}
+
+fn blank() -> Image {
+    Image(vec![0; W * H * 4])
+}
+
+#[test]
+fn diff_compares_premultiplied_colour_and_alpha() {
+    let (a, mut b) = (blank(), blank());
+    b.0[..4].copy_from_slice(&[255, 0, 0, 10]); // premultiplied red 10, alpha 10
+    assert_eq!(diff(&a, &b, 2), (1, 10));
+    let mut c = blank();
+    c.0[..4].copy_from_slice(&[200, 0, 0, 10]); // premultiplied 8 vs 10: within ±2
+    assert_eq!(diff(&b, &c, 2), (0, 2));
+    c.0[4..8].copy_from_slice(&[0, 0, 0, 255]);
+    let mut d = blank();
+    d.0[..4].copy_from_slice(&[200, 0, 0, 10]);
+    d.0[4..8].copy_from_slice(&[3, 0, 0, 255]);
+    assert_eq!(diff(&c, &d, 2), (1, 3));
+}
+
+#[test]
+fn ramp_check_accepts_nominal_and_names_a_bad_patch() {
+    let mut img = blank();
+    for i in 0..16usize {
+        let (x, y) = (64 + i * 80 + 32, 96);
+        let a = (17 * i) as u8;
+        img.0[(y * W + x) * 4..(y * W + x) * 4 + 4].copy_from_slice(&[255, 255, 255, a]);
+    }
+    assert!(check_ramp(&img).is_empty());
+    let (x, y) = (64 + 5 * 80 + 32, 96);
+    img.0[(y * W + x) * 4 + 3] = 87; // nominal 85
+    let f = check_ramp(&img);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(f[0].contains("patch 5"));
+}
+
+#[test]
+fn a_negative_control_passes_only_on_its_own_detector() {
+    use crate::{NEGATIVE, negative_verdict};
+    let (fault, detector) = NEGATIVE[2];
+    let hit = vec![r#"play 10: {"seq":3,"statusCode":500}"#.to_owned()];
+    assert!(negative_verdict(fault, detector, &hit).is_empty());
+    // Failing for another reason, or not failing at all, is not proof.
+    let other = vec!["console error: something else".to_owned()];
+    assert_eq!(negative_verdict(fault, detector, &other).len(), 1);
+    assert_eq!(negative_verdict(fault, detector, &[]).len(), 1);
+}
+
+/// ADR 0064's measurement: how far apart the per-OS goldens are (±2 LSB,
+/// premultiplied). `cargo test -p noplayout-conformance -- --ignored --nocapture cross_os`.
+#[test]
+#[ignore = "prints a measurement for ADR 0064"]
+fn cross_os_goldens() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("goldens");
+    let oses = [
+        "linux-x86_64",
+        "macos-aarch64",
+        "macos-x86_64",
+        "windows-x86_64",
+    ];
+    let names = [
+        "gradient-shape",
+        "bball-lower-third",
+        "bball-matchup",
+        "bball-scorebug",
+        "bball-sponsor-bug",
+        "bball-stat-card",
+        "bball-ticker",
+    ];
+    let img = |os: &str, n: &str| {
+        crate::pixels::read_png(&root.join(os).join(format!("{n}.png"))).unwrap()
+    };
+    for n in names {
+        for (i, a) in oses.iter().enumerate() {
+            for b in &oses[i + 1..] {
+                let (bad, worst) = diff(&img(a, n), &img(b, n), 2);
+                println!("{n} {a} vs {b}: {bad} px beyond ±2, max diff {worst}");
+            }
+        }
+    }
+}

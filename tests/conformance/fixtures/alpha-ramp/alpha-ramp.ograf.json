@@ -1,0 +1,12 @@
+{
+    "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+    "name": "noPlayout alpha-ramp",
+    "description": "Pixel fixture: 16 white patches, 64x64 px, at alpha 17*i (i = 0..15) on a transparent background. Static.",
+    "id": "noplayout-alpha-ramp",
+    "version": "1",
+    "main": "graphic.mjs",
+    "supportsRealTime": true,
+    "supportsNonRealTime": false,
+    "stepCount": 1,
+    "schema": { "type": "object", "properties": {} }
+}

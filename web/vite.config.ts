@@ -12,6 +12,6 @@ export default defineConfig({
     target: 'es2022',
   },
   test: {
-    include: ['**/*.test.ts'],
+    include: ['**/*.test.ts', '../host/**/*.test.ts'],
   },
 });

@@ -27,13 +27,15 @@ fn main() -> Result<()> {
         Some("cef") => cef(),
         Some("web") => web(),
         Some("bundle") => bundle(release).map(|_| ()),
+        Some("kit") => kit(),
         Some("self-test") => self_test(release).map(|_| ()),
+        Some("conformance") => conformance(release, &args[1..]),
         Some("run") => run(release),
         Some("preflight") => preflight(),
         Some("licences") => licences(),
         _ => {
             eprintln!(
-                "usage: cargo xtask <cef | web | bundle | self-test | run | preflight | licences> [--release]"
+                "usage: cargo xtask <cef | web | bundle | kit | self-test | conformance | run | preflight | licences> [--release]"
             );
             std::process::exit(2);
         }
@@ -172,6 +174,100 @@ fn web() -> Result<()> {
     status(build)
 }
 
+/// `cargo xtask kit`: the M1 timing kit (D-020) for a Mac with no Rust toolchain: release
+/// binaries, the renderer bundle, the host runtime, the fixtures and `m1-timing.command`, as
+/// `target/kit/noplayout-m1-kit-<target>/` plus a `.tar.gz` of it. macOS only for now: the
+/// binding timing gates run on macOS (D-019, D-020).
+fn kit() -> Result<()> {
+    if !cfg!(target_os = "macos") {
+        bail!("the M1 timing kit is macOS-only (D-019, D-020)");
+    }
+    let mut build = cargo();
+    build.args([
+        "build",
+        "--release",
+        "--locked",
+        "--package",
+        "noplayout-core",
+        "--package",
+        "noplayout-output",
+        "--package",
+        "noplayout-oracle",
+    ]);
+    status(build)?;
+    bundle(true)?;
+    let root = root();
+    if !root.join("web/dist/host/ograf-host.js").exists() {
+        web()?;
+    }
+    let target = host_target();
+    let name = format!("noplayout-m1-kit-{target}");
+    let base = root.join("target").join("kit");
+    let dest = base.join(&name);
+    if dest.exists() {
+        // Keep earlier runs' results: they are evidence, the rest of the kit is rebuilt.
+        let results = dest.join("results");
+        if results.exists() {
+            let keep = base.join("results");
+            std::fs::create_dir_all(&keep)?;
+            for entry in std::fs::read_dir(&results)? {
+                let entry = entry?;
+                std::fs::rename(entry.path(), keep.join(entry.file_name()))?;
+            }
+        }
+        std::fs::remove_dir_all(&dest)?;
+    }
+    let bin = dest.join("bin");
+    std::fs::create_dir_all(&bin)?;
+    // `ditto` keeps the framework's symlinks and the bundles' code signatures.
+    let ditto = |from: &Path, to: &Path| -> Result<()> {
+        let mut c = Command::new("ditto");
+        c.arg(from).arg(to);
+        status(c)
+    };
+    let profile = profile_dir(true);
+    for exe in ["noplayout-engine", "noplayout-output", "noplayout-oracle"] {
+        ditto(&profile.join(exe), &bin.join(exe))?;
+    }
+    ditto(
+        &profile.join("noplayout-renderer.app"),
+        &bin.join("noplayout-renderer.app"),
+    )?;
+    ditto(&root.join("web/dist/host"), &bin.join("host"))?;
+    for f in ["frame-oracle", "recovery-probe", "basketball-ograf-package"] {
+        ditto(
+            &root.join("fixtures").join(f),
+            &dest.join("fixtures").join(f),
+        )?;
+    }
+    ditto(
+        &root.join("scripts/dev-oracle-run.sh"),
+        &dest.join("scripts/dev-oracle-run.sh"),
+    )?;
+    ditto(
+        &root.join("scripts/m1-timing.command"),
+        &dest.join("m1-timing.command"),
+    )?;
+    let version = format!(
+        "{} {}\n",
+        git(&["describe", "--tags", "--always", "--dirty"]).unwrap_or_else(|| "unknown".into()),
+        target
+    );
+    std::fs::write(dest.join("VERSION"), version)?;
+    let mut tar = Command::new("tar");
+    tar.arg("-czf")
+        .arg(base.join(format!("{name}.tar.gz")))
+        .arg("-C")
+        .arg(&base)
+        .arg(&name);
+    status(tar)?;
+    eprintln!(
+        "xtask: kit at {} (+ .tar.gz); run m1-timing.command from Terminal on the target Mac",
+        dest.display()
+    );
+    Ok(())
+}
+
 /// Build the renderer and, on macOS, assemble `noplayout-renderer.app` with the CEF framework
 /// and the four helper apps next to the other binaries (spike S5). Returns the renderer path.
 fn bundle(release: bool) -> Result<PathBuf> {
@@ -276,6 +372,29 @@ fn build_headless(release: bool) -> Result<PathBuf> {
     status(build)?;
     bundle(release)?;
     Ok(profile_dir(release).join(format!("noplayout-engine{}", std::env::consts::EXE_SUFFIX)))
+}
+
+/// `cargo xtask conformance [--release] [conformance | negative | pixels | recovery] [--bless] [--only NAME]`: M1
+/// tasks 9 and 10 (`tests/conformance`) against freshly built engine, output and renderer. The
+/// host runtime must be built (`cargo xtask web`); on Linux run it under `xvfb-run`.
+fn conformance(release: bool, rest: &[String]) -> Result<()> {
+    build_headless(release)?;
+    let mut build = cargo();
+    build.args(["build", "--locked", "--package", "noplayout-conformance"]);
+    if release {
+        build.arg("--release");
+    }
+    status(build)?;
+    if !root().join("web/dist/host/renderer.html").exists() {
+        web()?;
+    }
+    let exe = profile_dir(release).join(format!(
+        "noplayout-conformance{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    let mut run = Command::new(exe);
+    run.args(rest.iter().filter(|a| *a != "--release"));
+    status(run)
 }
 
 /// Build engine, output and renderer, then run the engine's headless self-test.

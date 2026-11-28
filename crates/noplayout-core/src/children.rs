@@ -19,6 +19,7 @@ use noplayout_proto::{self as proto, Down, FrameError, Hello, HelloError, Pong, 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,6 +32,8 @@ pub const ENV_OUTPUT: &str = "NOPLAYOUT_OUTPUT";
 
 /// How long a child that stopped answering pings stays `ok` before it is marked failed.
 const PONG_DEADLINE: Duration = Duration::from_secs(5);
+/// Control heartbeat to every child (§2.13.1: every 100 ms; K4/K6 fire after 500 ms silent).
+pub const HEARTBEAT: Duration = Duration::from_millis(100);
 /// How long a child may take to exit after `Shutdown` before it is killed.
 const EXIT_GRACE: Duration = Duration::from_secs(10);
 
@@ -98,6 +101,10 @@ pub enum LaunchError {
 enum Cmd {
     Ping(oneshot::Sender<Pong>),
     Shutdown(oneshot::Sender<Result<ExitStatus, String>>),
+    /// SIGKILL / TerminateProcess, no grace (fault injection K1, superseded renderers).
+    Kill,
+    /// Forward one control message.
+    Send(Down),
 }
 
 /// A running child that has said `Hello`.
@@ -107,9 +114,52 @@ pub struct ChildHandle {
     pub pid: Option<u32>,
     pub hello: Hello,
     cmd: mpsc::Sender<Cmd>,
+    events: std::sync::Mutex<Option<mpsc::UnboundedReceiver<noplayout_proto::Event>>>,
+    exited: tokio::sync::watch::Receiver<bool>,
+    last_pong: Arc<AtomicU64>,
+}
+
+/// What `supervise` reports back to the handle.
+struct Watch {
+    exited: tokio::sync::watch::Sender<bool>,
+    last_pong: Arc<AtomicU64>,
+}
+
+/// Marks the child exited when `supervise` returns, whichever way.
+struct ExitGuard(tokio::sync::watch::Sender<bool>);
+
+impl Drop for ExitGuard {
+    fn drop(&mut self) {
+        let _ = self.0.send(true);
+    }
 }
 
 impl ChildHandle {
+    /// Resolves once the process has exited (or its supervisor stopped); at once if it has.
+    pub async fn wait_exit(&self) {
+        let mut rx = self.exited.clone();
+        let _ = rx.wait_for(|e| *e).await;
+    }
+
+    pub fn exit_watch(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.exited.clone()
+    }
+
+    pub fn has_exited(&self) -> bool {
+        *self.exited.borrow()
+    }
+
+    /// Time since the child last answered the [`HEARTBEAT`] ping (K4/K6 detection, §2.13.1).
+    pub fn pong_age(&self) -> Duration {
+        let at = self.last_pong.load(Ordering::Acquire);
+        Duration::from_nanos(noplayout_frames::clock::mono_ns().saturating_sub(at))
+    }
+
+    /// The child's `Up::Event`s, once (the supervisor takes them).
+    pub fn take_events(&self) -> Option<mpsc::UnboundedReceiver<noplayout_proto::Event>> {
+        self.events.lock().unwrap_or_else(|p| p.into_inner()).take()
+    }
+
     /// One `Ping` → `Pong` round trip.
     pub async fn ping(&self, timeout: Duration) -> Result<Pong, String> {
         let (tx, rx) = oneshot::channel();
@@ -121,6 +171,22 @@ impl ChildHandle {
             .await
             .map_err(|_| format!("the {} did not answer a ping", self.kind.label()))?
             .map_err(|_| format!("the {} went away during a ping", self.kind.label()))
+    }
+
+    /// Kill the process without a grace period; the supervisor then reports it failed.
+    pub async fn kill(&self) -> Result<(), String> {
+        self.cmd
+            .send(Cmd::Kill)
+            .await
+            .map_err(|_| format!("the {} had already stopped", self.kind.label()))
+    }
+
+    /// Send one control message.
+    pub async fn send(&self, msg: Down) -> Result<(), String> {
+        self.cmd
+            .send(Cmd::Send(msg))
+            .await
+            .map_err(|_| format!("the {} is no longer connected", self.kind.label()))
     }
 
     /// Send `Shutdown` and wait for the process to exit (killed after a grace period).
@@ -272,12 +338,29 @@ async fn launch_inner(
     tracing::info!(kind, pid, ?hello, "hello");
 
     let (cmd_tx, cmd_rx) = mpsc::channel(8);
-    tokio::spawn(supervise(spec.kind, process, stream, cmd_rx, slot.clone()));
+    let (events_tx, events_rx) = mpsc::unbounded_channel();
+    let (exit_tx, exit_rx) = tokio::sync::watch::channel(false);
+    let last_pong = Arc::new(AtomicU64::new(noplayout_frames::clock::mono_ns()));
+    tokio::spawn(supervise(
+        spec.kind,
+        process,
+        stream,
+        cmd_rx,
+        slot.clone(),
+        events_tx,
+        Watch {
+            exited: exit_tx,
+            last_pong: last_pong.clone(),
+        },
+    ));
     Ok(ChildHandle {
         kind: spec.kind,
         pid,
         hello,
         cmd: cmd_tx,
+        events: std::sync::Mutex::new(Some(events_rx)),
+        exited: exit_rx,
+        last_pong,
     })
 }
 
@@ -314,8 +397,13 @@ async fn supervise(
     stream: Arc<Stream>,
     mut cmd_rx: mpsc::Receiver<Cmd>,
     slot: Arc<RwLock<ChildHealth>>,
+    events: mpsc::UnboundedSender<noplayout_proto::Event>,
+    watch: Watch,
 ) {
     let label = kind.label();
+    // Every return from here on means the process is gone or being reaped.
+    let _exited = ExitGuard(watch.exited);
+    let pong_at = watch.last_pong;
     let (pong_tx, mut pong_rx) = mpsc::channel::<Pong>(16);
     // Reading frames is not cancel-safe, so it gets its own task.
     let reader = stream.clone();
@@ -327,6 +415,10 @@ async fn supervise(
                         break;
                     }
                 }
+                Ok(Up::Event(ev)) => {
+                    tracing::debug!(kind = label, ?ev, "event");
+                    let _ = events.send(ev);
+                }
                 Ok(other) => tracing::warn!(kind = label, ?other, "unexpected message"),
                 Err(e) => {
                     tracing::debug!(kind = label, "control socket closed: {e}");
@@ -336,7 +428,7 @@ async fn supervise(
         }
     });
 
-    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    let mut ticker = tokio::time::interval(HEARTBEAT);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut seq: u64 = 0;
     let mut waiting: Option<(u64, oneshot::Sender<Pong>)> = None;
@@ -351,6 +443,17 @@ async fn supervise(
                     waiting = Some((seq, reply));
                     if let Err(e) = write_down(&stream, &Down::Ping { seq }).await {
                         tracing::warn!(kind = label, "ping failed: {e}");
+                    }
+                }
+                Some(Cmd::Kill) => {
+                    tracing::warn!(kind = label, "killing (no grace)");
+                    if let Err(e) = process.start_kill() {
+                        tracing::warn!(kind = label, "kill failed: {e}");
+                    }
+                }
+                Some(Cmd::Send(msg)) => {
+                    if let Err(e) = write_down(&stream, &msg).await {
+                        tracing::warn!(kind = label, "send failed: {e}");
                     }
                 }
                 Some(Cmd::Shutdown(reply)) => {
@@ -392,6 +495,7 @@ async fn supervise(
             pong = pong_rx.recv(), if socket_open => match pong {
                 Some(p) => {
                     last_pong = Instant::now();
+                    pong_at.store(noplayout_frames::clock::mono_ns(), Ordering::Release);
                     health::update(&slot, |h| {
                         if kind == Kind::Renderer {
                             h.paints = Some(p.last_paint_seq);

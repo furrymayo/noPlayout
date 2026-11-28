@@ -1,0 +1,12 @@
+{
+    "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+    "name": "noPlayout step-unbounded",
+    "description": "Conformance fixture: stepCount -1; reports steps 0, 1, 2, then the end (currentStep undefined) on the fourth play.",
+    "id": "noplayout-step-unbounded",
+    "version": "1",
+    "main": "graphic.mjs",
+    "supportsRealTime": true,
+    "supportsNonRealTime": false,
+    "stepCount": -1,
+    "schema": { "type": "object", "properties": {} }
+}

@@ -5,7 +5,31 @@ the EBU [OGraf](https://ograf.ebu.io/) v1 standard. Graphics render in an offscr
 (CEF) and go out over NDI® and as web outputs. See [`IDEA.md`](IDEA.md) for what it is for and
 [`PLAN.md`](PLAN.md) for how it is built.
 
-**Status:** M0 (workspace skeleton). Nothing plays out yet. See [`STATUS.md`](STATUS.md).
+**Status:** M1 in progress (OGraf host runtime, CEF renderer, output clock). Graphics load, play
+and render into the output process; nothing goes out over NDI yet. See [`STATUS.md`](STATUS.md).
+
+## How to try it
+
+M1 has no operator UI yet; you drive a channel from the command line. After `cargo xtask cef`
+(below), from the repository root:
+
+```sh
+cargo xtask web                        # build the host page into web/dist
+cargo xtask self-test --release        # build engine, output process and renderer; prints PASS
+export NOPLAYOUT_UI_TOKEN=try-it       # any string; ctl must send the engine's token
+NOPLAYOUT_HOST_DIR=web/dist/host ./target/release/noplayout-engine --port 18790 &
+E=./target/release/noplayout-engine
+$E ctl --port 18790 import fixtures/basketball-ograf-package/bball-scorebug   # prints manifestUrl
+$E ctl --port 18790 load 10 <manifestUrl>
+$E ctl --port 18790 play 10
+$E ctl --port 18790 update 10 '{"homeScore": 3}'
+$E ctl --port 18790 inspect            # mirror state and host-bus counters
+$E ctl --port 18790 kill-renderer      # the standby takes over; the graphic stays loaded
+```
+
+Each command prints the graphic's result (`statusCode` 200). `cargo xtask conformance --release`
+runs every EBU example and Basketball graphic through the real renderer and compares pixels with
+the goldens. Stop the engine with `kill %1`.
 
 ## Build and run (developers)
 

@@ -9,8 +9,8 @@ use noplayout_core::children::{self, Kind, Launch};
 use noplayout_core::health::HealthState;
 use noplayout_core::http::{self, ApiState};
 use noplayout_core::instance::InstanceLock;
+use noplayout_core::supervisor::{self, Supervisor};
 use noplayout_core::{DEFAULT_PORT, ENV_UI_TOKEN, logging, paths, selftest};
-use std::ffi::OsString;
 use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::sync::Notify;
@@ -18,19 +18,24 @@ use tokio::sync::Notify;
 /// Exit status when another engine holds the lock.
 const EXIT_ALREADY_RUNNING: u8 = 3;
 
-const USAGE: &str = "usage: noplayout-engine [--port N] | --self-test | --version";
+const USAGE: &str =
+    "usage: noplayout-engine [--port N] | --self-test | --version | ctl <op> … (ctl --help)";
 
 #[derive(Debug)]
 enum Mode {
     Run { port: u16 },
     SelfTest,
     Version,
+    Ctl(Vec<String>),
 }
 
 fn parse_args(args: impl IntoIterator<Item = String>) -> Result<Mode, String> {
     let mut port = DEFAULT_PORT;
     let mut self_test = false;
-    let mut it = args.into_iter();
+    let mut it = args.into_iter().peekable();
+    if it.peek().is_some_and(|a| a == "ctl") {
+        return Ok(Mode::Ctl(it.skip(1).collect()));
+    }
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--self-test" => self_test = true,
@@ -69,6 +74,7 @@ fn main() -> ExitCode {
         }
     };
     match mode {
+        Mode::Ctl(args) => ctl(&args),
         Mode::Version => {
             println!("noplayout-engine {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -82,6 +88,34 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+    }
+}
+
+/// `noplayout-engine ctl …`: one dev-control request to a running engine (M1 task 3).
+fn ctl(args: &[String]) -> ExitCode {
+    let (port, req) = match noplayout_core::ctl::parse(args) {
+        Ok(r) => r,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(token) = std::env::var(ENV_UI_TOKEN).ok().filter(|t| !t.is_empty()) else {
+        eprintln!(
+            "noplayout-engine ctl: set {ENV_UI_TOKEN} to the token the engine was started with"
+        );
+        return ExitCode::from(2);
+    };
+    let port = port.unwrap_or(DEFAULT_PORT);
+    match noplayout_core::client::post_ctl(port, &token, &req, std::time::Duration::from_secs(20)) {
+        Ok(body) => {
+            println!("{}", body.trim());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("noplayout-engine ctl: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -143,16 +177,39 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
 
     let health = HealthState::new();
     let stop = Arc::new(Notify::new());
+    let channel = "1";
+    let time = noplayout_core::time::TimeSource::new();
+    let run_id = time.run().to_string();
+    // Paint rings of a crashed engine outlive it on Unix; sweep them before creating new ones.
+    let rings = noplayout_frames::shm::Registry::new(data.join("rings.txt"));
+    match rings.sweep() {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!("removed {n} paint ring(s) left by an earlier engine"),
+        Err(e) => tracing::warn!("cannot sweep old paint rings: {e}"),
+    }
+    // TODO(M4): shows/<show-id>.onair.jsonl per open show; M1 journals the dev show. Lines are
+    // flushed per record and fsynced on a 200 ms debounce by the writer thread.
+    let (onair, _onair_thread) =
+        noplayout_core::hostbus::onair::OnAirLog::open(data.join("shows").join("dev.onair.jsonl"))?;
+    let (bus_events, mut bus_rx) = tokio::sync::mpsc::unbounded_channel();
+    let bus =
+        noplayout_core::hostbus::HostBus::start(&[channel], time, Some(onair), Some(bus_events));
+    let (faults, mut fault_rx) = tokio::sync::mpsc::unbounded_channel();
     let state = Arc::new(ApiState {
+        library: Some(noplayout_core::library::Library::open(
+            data.join("library"),
+        )?),
         health: health.clone(),
         ui_token: std::env::var(ENV_UI_TOKEN).ok().filter(|t| !t.is_empty()),
         shutdown: stop.clone(),
+        hostbus: Some(bus.clone()),
+        host_dir: paths::host_dir(),
+        faults: Some(faults),
     });
     let server_stop = Arc::new(Notify::new());
     let server = tokio::spawn(http::serve(listener, state, server_stop.clone()));
 
-    // One channel in M0, spawn order per PLAN §4.2: output process first, then the renderer.
-    let channel = "1";
+    // Spawn order per PLAN §4.2: the output process first, then the renderers (supervisor).
     let output = children::launch(
         Launch {
             kind: Kind::Output,
@@ -162,37 +219,96 @@ async fn run(port: u16) -> anyhow::Result<ExitCode> {
         health.output(),
     )
     .await
-    .ok();
-    let cache = paths::cef_cache_dir(&data, channel, "a");
-    let renderer = children::launch(
-        Launch {
-            kind: Kind::Renderer,
-            exe: children::default_exe(Kind::Renderer),
-            args: vec![
-                "--channel".into(),
-                channel.into(),
-                "--slot".into(),
-                "a".into(),
-                OsString::from("--cache-dir"),
-                cache.into_os_string(),
-            ],
+    .ok()
+    .map(Arc::new);
+    let format = noplayout_core::program::format_from_env();
+    let epoch_mono_ns = match output.as_ref().map(|o| &o.hello) {
+        Some(noplayout_proto::Hello::Output(h)) => {
+            // Every action's ts.slot names the output slot after it (§4.3).
+            if let Some(ch) = bus.channel(channel) {
+                ch.set_slot_clock(Some(noplayout_core::time::SlotClock {
+                    epoch_mono_ns: h.epoch.mono_ns,
+                    rate: noplayout_frames::clock::Rate {
+                        num: format.rate_num,
+                        den: format.rate_den,
+                    },
+                }))
+                .await;
+            }
+            h.epoch.mono_ns
+        }
+        // TODO(M1): without an output process (it failed to start) the renderers pace from the
+        // engine's own clock and actions carry no ts.slot; K5/K6 output restarts are not in M1
+        // (STATUS.md).
+        _ => noplayout_frames::clock::mono_ns(),
+    };
+    let mut output_events = output.as_ref().and_then(|o| o.take_events());
+    let mut sup = Supervisor::new(
+        supervisor::Env {
+            channel: channel.into(),
+            run: run_id,
+            port: bound.port(),
+            data: data.clone(),
+            format,
+            mode: noplayout_core::program::drive_mode_from_env(),
+            epoch_mono_ns,
+            bus: bus.clone(),
+            rings: rings.clone(),
         },
-        health.renderer(),
-    )
-    .await
-    .ok();
+        health.clone(),
+        output.clone(),
+    );
+    sup.start().await;
+    let output_event = async |rx: &mut Option<
+        tokio::sync::mpsc::UnboundedReceiver<noplayout_proto::Event>,
+    >| match rx {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    };
 
-    tokio::select! {
-        _ = stop.notified() => tracing::info!("stopping: API request"),
-        signal = terminate_signal() => tracing::info!("stopping: {signal}"),
-    }
-
-    for child in [renderer, output].into_iter().flatten() {
-        match child.shutdown().await {
-            Ok(status) => tracing::info!(kind = child.kind.label(), %status, "stopped"),
-            Err(e) => tracing::warn!(kind = child.kind.label(), "{e}"),
+    let term = terminate_signal();
+    tokio::pin!(term);
+    loop {
+        tokio::select! {
+            _ = stop.notified() => { tracing::info!("stopping: API request"); break; }
+            signal = &mut term => { tracing::info!("stopping: {signal}"); break; }
+            Some(f) = fault_rx.recv() => match (f, sup.active_handle()) {
+                (noplayout_core::ctl::Fault::KillRenderer { .. }, Some(r)) => {
+                    if let Err(e) = r.kill().await { tracing::warn!("kill-renderer: {e}"); }
+                }
+                (noplayout_core::ctl::Fault::Hang { ms, .. }, Some(r)) => {
+                    if let Err(e) = r.send(noplayout_proto::Down::HangPage { ms }).await {
+                        tracing::warn!("hang: {e}");
+                    }
+                }
+                (f, None) => tracing::warn!(?f, "fault ignored: no active renderer"),
+            },
+            Some(ev) = bus_rx.recv() => match ev {
+                noplayout_core::hostbus::BusEvent::KillIncarnation { inc, .. } => {
+                    tracing::warn!(inc, "a superseded incarnation tried to register; killing it");
+                    sup.kill_incarnation(inc).await;
+                }
+            },
+            Some(ev) = output_event(&mut output_events) => match ev {
+                noplayout_proto::Event::OutputStats(s) => tracing::debug!(?s, "output stats"),
+                ev @ noplayout_proto::Event::PaintStall { .. } => sup.output_event(&ev).await,
+                // TODO(M1): SenderStuck → recycle the output process (K5/K6, incl. the 3 s
+                // stuck-sink case of task 6) is not in M1; it is logged (STATUS.md).
+                other => tracing::warn!(?other, "output event"),
+            },
+            w = sup.wait() => sup.handle(w).await,
         }
     }
+    drop(bus);
+
+    sup.shutdown().await;
+    if let Some(out) = output {
+        match out.shutdown().await {
+            Ok(status) => tracing::info!(kind = out.kind.label(), %status, "stopped"),
+            Err(e) => tracing::warn!(kind = out.kind.label(), "{e}"),
+        }
+    }
+    let _ = rings.sweep();
     server_stop.notify_one();
     match server.await {
         Ok(Ok(())) => {}

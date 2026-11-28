@@ -39,6 +39,8 @@ allow = [
     "Apache-2.0 WITH LLVM-exception", # target-lexicon (via cfg-expr/system-deps, build-time)
     "bzip2-1.0.6",                    # libbz2-rs-sys (download-cef, build-time CEF fetch)
     "CDLA-Permissive-2.0",            # webpki-roots CA data (ureq in download-cef, build-time)
+    # Added in M1 (task 1, OGraf manifest validation). Permissive, no attribution clause:
+    "MIT-0",                          # borrow-or-share (via jsonschema, engine-side only)
 ]
 # IJG is allowed ahead of jpeg-encoder (M2); don't warn that it isn't used yet.
 unused-allowed-license = "allow"

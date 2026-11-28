@@ -1,23 +1,31 @@
 //! `noplayout-renderer --channel <id> --slot a|b --cache-dir <dir>`: the CEF offscreen renderer
-//! (D-001, E-005, E-041). It links `proto` and `cef` only; it never links the engine core and
-//! never sends NDI (E-040).
+//! (D-001, E-005, E-041). It links `proto`, `frames` and `cef` only; it never links the engine
+//! core and never sends NDI (E-040).
 //!
-//! M0 (PLAN §7 task 4): `execute_process` → `initialize` → one windowless browser on
-//! `about:blank` → `Hello{cef_version}` over the control socket → answer `Ping`s with the paint
-//! count → clean shutdown on `Shutdown`. The same executable serves as CEF's helper subprocesses
-//! (`--type=...` on the command line), on macOS from the dev bundle's helper apps.
-// TODO(M1): host protocol pages, paint ring, drive modes, standby rate. (STATUS.md)
+//! M1 (PLAN §7 task 4, §2.4): `execute_process` → `initialize` → `Hello` → on `Configure`, the
+//! paint ring and a transparent OSR program browser on the engine's host page, its identity
+//! injected after load; `on_paint` copies straight into the ring. Mode A posts external
+//! begin-frames at `T_k − lead` (every slot active, every 6th standby); mode B free-runs at
+//! `ceil(fps)` (10 fps standby). A paint probe forces a repaint after 100 ms without one
+//! (E-057). The message loop runs on CEF's own schedule (`on_schedule_message_pump_work`).
+//! The same executable serves as CEF's helper subprocesses (`--type=...`).
+// TODO(M1): preview browser + monitor JPEGs on the standby slot (task 8 / M3). (STATUS.md)
 
 mod cef_host;
 
-use noplayout_proto::{self as proto, Down, Hello, Pong, RendererHello, Up};
+use noplayout_frames::clock;
+use noplayout_proto::{self as proto, Down, DriveMode, Event, Hello, Pong, RendererHello, Up};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 /// How long an orphaned renderer lingers before it shuts down (PLAN §4.2).
 const ORPHAN_GRACE: Duration = Duration::from_secs(3);
+/// Paint probe interval (E-057).
+const PROBE_AFTER_NS: u64 = 100_000_000;
 
 /// Command-line options of the browser (main) process.
 #[derive(Debug, PartialEq, Eq)]
@@ -70,10 +78,56 @@ fn split_cef_version(full: &str) -> (String, String) {
     (cef, chromium)
 }
 
-/// Messages from the control-socket reader thread to the CEF main loop.
-enum Inbox {
+/// Everything that wakes the CEF main loop.
+pub enum Wake {
     Down(Down),
     Closed(String),
+    /// CEF asks for `do_message_loop_work` in `ms` (≤ 0: now).
+    Pump(i64),
+    /// Mode A: the begin-frame thread's deadline arrived.
+    BeginFrame,
+    /// A CEF callback has something for the engine.
+    Event(Event),
+}
+
+/// Script for fault K3: block the page's main thread for `ms`.
+fn hang_script(ms: u32) -> String {
+    format!("(()=>{{const e=performance.now()+{ms};while(performance.now()<e){{}}}})()")
+}
+
+/// Mode A begin-frame thread (PLAN §2.4, §5.2): deadlines `T_k − lead` from the output epoch,
+/// every slot while active, every 6th while standby. Runs at elevated priority.
+fn spawn_begin_frames(
+    cfg: &proto::RendererConfig,
+    active: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+    wake: mpsc::Sender<Wake>,
+) -> std::io::Result<()> {
+    let rate = clock::Rate {
+        num: cfg.format.rate_num,
+        den: cfg.format.rate_den,
+    };
+    let (epoch, lead) = (cfg.epoch_mono_ns, cfg.lead_ns);
+    std::thread::Builder::new()
+        .name("begin-frame".into())
+        .spawn(move || {
+            if !clock::elevate_current_thread() {
+                eprintln!("noplayout-renderer: begin-frame thread runs at normal priority");
+            }
+            let mut k = clock::k_at_or_after(epoch, clock::mono_ns() + lead, rate);
+            while !stop.load(Ordering::Relaxed) {
+                let deadline = clock::t_k(epoch, k, rate).saturating_sub(lead);
+                clock::wait_until(deadline);
+                if (active.load(Ordering::Relaxed) || k.is_multiple_of(6))
+                    && wake.send(Wake::BeginFrame).is_err()
+                {
+                    return;
+                }
+                // Never burst: after a stall, continue from the next future slot.
+                k = (k + 1).max(clock::k_at_or_after(epoch, clock::mono_ns() + lead, rate));
+            }
+        })
+        .map(|_| ())
 }
 
 fn main() -> ExitCode {
@@ -103,14 +157,15 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
 
     use interprocess::local_socket::{Stream, prelude::*};
     let socket = proto::socket_name(&name).map_err(|e| format!("bad socket name {name}: {e}"))?;
-    let stream = std::sync::Arc::new(
+    let stream = Arc::new(
         Stream::connect(socket).map_err(|e| format!("cannot reach the engine at {name}: {e}"))?,
     );
     let reader = stream.clone();
     // `&Stream` is both Read and Write: the reader thread and this loop share one stream.
     let mut tx = &*stream;
 
-    let cef = cef_host::Cef::start(&opts.cache_dir)?;
+    let (wake_tx, wake) = mpsc::channel::<Wake>();
+    let mut cef = cef_host::Cef::start(&opts.cache_dir, wake_tx.clone())?;
     let (cef_version, chromium_version) = split_cef_version(cef_host::CEF_VERSION_FULL);
     let hello = Up::Hello(Hello::Renderer(RendererHello {
         proto: proto::PROTO_VERSION,
@@ -128,7 +183,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         cef_host::CEF_VERSION_FULL
     );
 
-    let (inbox_tx, inbox) = mpsc::channel::<Inbox>();
+    let rx_wake = wake_tx.clone();
     std::thread::Builder::new()
         .name("control-rx".into())
         .spawn(move || {
@@ -136,12 +191,12 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             loop {
                 match proto::read_frame::<_, Down>(&mut rx) {
                     Ok(msg) => {
-                        if inbox_tx.send(Inbox::Down(msg)).is_err() {
+                        if rx_wake.send(Wake::Down(msg)).is_err() {
                             return;
                         }
                     }
                     Err(e) => {
-                        let _ = inbox_tx.send(Inbox::Closed(e.to_string()));
+                        let _ = rx_wake.send(Wake::Closed(e.to_string()));
                         return;
                     }
                 }
@@ -149,34 +204,134 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         })
         .map_err(|e| format!("cannot start the control reader: {e}"))?;
 
+    let active = Arc::new(AtomicBool::new(false));
+    let mut stop = Arc::new(AtomicBool::new(false));
+    let mut config: Option<proto::RendererConfig> = None;
     let mut orphaned_at: Option<Instant> = None;
+    let mut next_pump = Instant::now();
+    let mut last_probe_ns = 0u64;
+    let send = |tx: &mut &interprocess::local_socket::Stream, up: &Up| {
+        if let Err(e) = proto::write_frame(tx, up) {
+            eprintln!("noplayout-renderer: send failed: {e}");
+        }
+    };
+
     let code = loop {
-        cef.pump();
-        match inbox.try_recv() {
-            Ok(Inbox::Down(Down::Ping { seq })) => {
+        let timeout = next_pump.saturating_duration_since(Instant::now());
+        match wake.recv_timeout(timeout) {
+            Ok(Wake::Pump(ms)) => {
+                let at = Instant::now() + Duration::from_millis(ms.max(0) as u64);
+                next_pump = next_pump.min(at);
+            }
+            Ok(Wake::BeginFrame) => cef.begin_frame(),
+            Ok(Wake::Event(ev)) => {
+                if let Event::PageTerminated { status } = &ev {
+                    eprintln!("noplayout-renderer: program page terminated: {status}");
+                }
+                send(&mut tx, &Up::Event(ev));
+            }
+            Ok(Wake::Down(Down::Ping { seq })) => {
                 let pong = Up::Pong(Pong {
                     seq,
-                    last_paint_seq: cef.paints(),
+                    last_paint_seq: cef.shared.paints.load(Ordering::Relaxed),
                 });
-                if let Err(e) = proto::write_frame(&mut tx, &pong) {
-                    eprintln!("noplayout-renderer: pong failed: {e}");
+                send(&mut tx, &pong);
+            }
+            Ok(Wake::Down(Down::Configure(cfg))) => {
+                // A replaced begin-frame thread stops at its next deadline.
+                stop.store(true, Ordering::Relaxed);
+                stop = Arc::new(AtomicBool::new(false));
+                active.store(cfg.active, Ordering::Relaxed);
+                match cef.open_program(&cfg) {
+                    Ok(()) => {
+                        eprintln!(
+                            "noplayout-renderer: program page {} mode {:?} {}",
+                            cfg.url,
+                            cfg.mode,
+                            if cfg.active { "active" } else { "standby" }
+                        );
+                        if cfg.mode == DriveMode::A
+                            && let Err(e) = spawn_begin_frames(
+                                &cfg,
+                                active.clone(),
+                                stop.clone(),
+                                wake_tx.clone(),
+                            )
+                        {
+                            send(
+                                &mut tx,
+                                &Up::Event(Event::ConfigureFailed {
+                                    why: format!("begin-frame thread: {e}"),
+                                }),
+                            );
+                        }
+                        config = Some(cfg);
+                    }
+                    Err(why) => {
+                        eprintln!("noplayout-renderer: configure failed: {why}");
+                        send(&mut tx, &Up::Event(Event::ConfigureFailed { why }));
+                    }
                 }
             }
-            Ok(Inbox::Down(Down::Shutdown)) => break ExitCode::SUCCESS,
-            Ok(Inbox::Closed(why)) => {
+            Ok(Wake::Down(Down::Role { active: a })) => {
+                active.store(a, Ordering::Relaxed);
+                if let Some(cfg) = &config {
+                    let rate = clock::Rate {
+                        num: cfg.format.rate_num,
+                        den: cfg.format.rate_den,
+                    };
+                    cef.set_frame_rate(cfg.mode, a, rate);
+                }
+            }
+            Ok(Wake::Down(Down::Activate { .. })) => {
+                eprintln!("noplayout-renderer: Activate is an output message; ignored");
+            }
+            Ok(Wake::Down(Down::HangPage { ms })) => {
+                eprintln!("noplayout-renderer: hanging the program page for {ms} ms (fault K3)");
+                cef.run_script(&hang_script(ms));
+            }
+            Ok(Wake::Down(Down::Shutdown)) => break ExitCode::SUCCESS,
+            Ok(Wake::Closed(why)) => {
                 eprintln!(
                     "noplayout-renderer: control socket closed ({why}); shutting down in {} s",
                     ORPHAN_GRACE.as_secs()
                 );
                 orphaned_at = Some(Instant::now());
             }
-            Err(mpsc::TryRecvError::Empty | mpsc::TryRecvError::Disconnected) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break ExitCode::FAILURE,
+        }
+        if Instant::now() >= next_pump {
+            cef.pump();
+            next_pump = Instant::now() + cef_host::PUMP_FALLBACK;
+        }
+        // Paint probe (E-057): no paint for 100 ms → full-view invalidate, recorded in the ring.
+        if cef.has_program() {
+            let now = clock::mono_ns();
+            let last = cef.shared.last_paint_ns.load(Ordering::Relaxed);
+            if now.saturating_sub(last) >= PROBE_AFTER_NS
+                && now.saturating_sub(last_probe_ns) >= PROBE_AFTER_NS
+            {
+                last_probe_ns = now;
+                cef.invalidate();
+                if let Some(w) = cef
+                    .shared
+                    .ring
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .as_ref()
+                {
+                    w.record_probe(now);
+                }
+                // The probe deadline may be sooner than CEF's next scheduled pump.
+                next_pump = next_pump.min(Instant::now() + Duration::from_millis(1));
+            }
         }
         if orphaned_at.is_some_and(|t| t.elapsed() >= ORPHAN_GRACE) {
             break ExitCode::from(4);
         }
-        std::thread::sleep(cef_host::PUMP_INTERVAL);
     };
+    stop.store(true, Ordering::Relaxed);
     cef.shutdown();
     eprintln!("noplayout-renderer: stopped");
     Ok(code)

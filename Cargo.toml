@@ -13,6 +13,7 @@ members = [
     "crates/noplayout-datasource",
     "crates/noplayout-decoder-oes",
     "crates/xtask",
+    "tests/conformance",
 ]
 
 [workspace.package]
@@ -63,12 +64,16 @@ tokio = { version = "=1.54.1", features = ["rt-multi-thread", "net", "time", "sy
 tokio-util = { version = "=0.7.20", features = ["codec"] }
 interprocess = { version = "=2.4.10" }
 postcard = { version = "=1.2.0", default-features = false, features = ["use-std"] }
+# Test-only WebSocket client for the host protocol (already in the graph via axum's `ws`).
+tokio-tungstenite = { version = "=0.29.0", default-features = false, features = ["connect"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["sink"] }
 
 # Data
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154" }
 jsonschema = { version = "=0.63.2", default-features = false, features = ["resolve-file"] }
-zip = { version = "=9.8.2" }
+zip = { version = "=9.8.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+sha2 = { version = "=0.11.2" }
 directories = { version = "=6.0.0" }
 uuid = { version = "=1.29.3", features = ["v7", "serde"] }
 
@@ -92,9 +97,9 @@ socket2 = { version = "=0.6.5" }
 # Health
 sysinfo = { version = "=0.40.4" }
 
-# Shared memory paint ring (version-checked only; API read in M1 task 4 / S8)
-iceoryx2 = { version = "=0.10.1" }
-memmap2 = { version = "=0.9.12" }
+# Own-ring shared memory (S8, ADR 0063): shm_open/mmap and CreateFileMappingW; both already in the graph.
+libc = { version = "=0.2.191" }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Memory", "Win32_System_Performance", "Win32_System_Threading"] }
 
 # Tests
 insta = { version = "=1.49.0" }

@@ -65,6 +65,12 @@ pub struct Health {
     pub engine: EngineHealth,
     pub renderer: ChildHealth,
     pub output: ChildHealth,
+    /// The warm standby renderer (§2.13.3), when one runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standby: Option<ChildHealth>,
+    /// The channel supervisor's state and recovery records (M1 task 8, S7a).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supervisor: Option<serde_json::Value>,
 }
 
 /// Shared, cheaply cloned health state. Writers hold the lock only to copy small values.
@@ -73,6 +79,8 @@ pub struct HealthState {
     started: Instant,
     renderer: Arc<RwLock<ChildHealth>>,
     output: Arc<RwLock<ChildHealth>>,
+    standby: Arc<RwLock<Option<ChildHealth>>>,
+    supervisor: Arc<RwLock<Option<serde_json::Value>>>,
 }
 
 impl Default for HealthState {
@@ -87,11 +95,31 @@ impl HealthState {
             started: Instant::now(),
             renderer: Arc::new(RwLock::new(ChildHealth::starting())),
             output: Arc::new(RwLock::new(ChildHealth::starting())),
+            standby: Arc::new(RwLock::new(None)),
+            supervisor: Arc::new(RwLock::new(None)),
         }
     }
 
     pub fn renderer(&self) -> Arc<RwLock<ChildHealth>> {
         self.renderer.clone()
+    }
+
+    /// The supervisor publishes its active and standby renderers here (§2.13.3).
+    pub fn publish_supervisor(&self, v: serde_json::Value) {
+        match self.supervisor.write() {
+            Ok(mut s) => *s = Some(v),
+            Err(p) => *p.into_inner() = Some(v),
+        }
+    }
+
+    pub fn publish_renderers(&self, active: Option<ChildHealth>, standby: Option<ChildHealth>) {
+        if let Some(a) = active {
+            update(&self.renderer, |h| *h = a);
+        }
+        match self.standby.write() {
+            Ok(mut s) => *s = standby,
+            Err(p) => *p.into_inner() = standby,
+        }
     }
 
     pub fn output(&self) -> Arc<RwLock<ChildHealth>> {
@@ -112,6 +140,14 @@ impl HealthState {
             },
             renderer: read(&self.renderer),
             output: read(&self.output),
+            standby: match self.standby.read() {
+                Ok(h) => h.clone(),
+                Err(p) => p.into_inner().clone(),
+            },
+            supervisor: match self.supervisor.read() {
+                Ok(h) => h.clone(),
+                Err(p) => p.into_inner().clone(),
+            },
         }
     }
 }

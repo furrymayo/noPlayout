@@ -110,7 +110,32 @@ async fn check_renderer(report: &mut Report, exe: PathBuf, cache_root: &Path) {
     };
     report.push("renderer: hello", hello);
 
-    // The OSR browser on about:blank must deliver at least one paint.
+    // A transparent OSR browser on about:blank must paint into a paint ring the engine can read
+    // (the M1 path: Configure → ring → on_paint copy).
+    let ring =
+        noplayout_frames::ring_name(&crate::new_token(), "st", u64::from(std::process::id()));
+    let registry = noplayout_frames::shm::Registry::new(cache_root.join("rings.txt"));
+    let _ = registry.sweep();
+    if let Err(e) = registry.record(&ring) {
+        report.push("renderer: configure", Err(e.to_string()));
+    }
+    let configure = child
+        .send(noplayout_proto::Down::Configure(
+            noplayout_proto::RendererConfig {
+                format: noplayout_proto::Format::HD1080P5994,
+                mode: noplayout_proto::DriveMode::B,
+                epoch_mono_ns: noplayout_frames::clock::mono_ns(),
+                lead_ns: 16_683_333,
+                url: "about:blank".into(),
+                page_inc: 1,
+                page_token: "selftest".into(),
+                ring: ring.clone(),
+                active: true,
+            },
+        ))
+        .await;
+    report.push("renderer: configure", configure.map(|()| ring.clone()));
+
     let deadline = Instant::now() + Duration::from_secs(10);
     let paint = loop {
         match child.ping(Duration::from_secs(5)).await {
@@ -125,8 +150,24 @@ async fn check_renderer(report: &mut Report, exe: PathBuf, cache_root: &Path) {
         }
     };
     report.push("renderer: ping + first paint", paint);
+    let in_ring = match noplayout_frames::Reader::open(&ring) {
+        Ok(r) => match r.take_newest(u64::MAX) {
+            Some(s) if (s.meta.width, s.meta.height) == (1920, 1080) => Ok(format!(
+                "paint {} {}x{} in ring, alpha {}",
+                s.meta.paint_seq,
+                s.meta.width,
+                s.meta.height,
+                s.pixels()[3]
+            )),
+            Some(s) => Err(format!("paint is {}x{}", s.meta.width, s.meta.height)),
+            None => Err("no paint in the ring".into()),
+        },
+        Err(e) => Err(format!("cannot open ring {ring}: {e}")),
+    };
+    report.push("renderer: paint ring", in_ring);
     let exit = child.shutdown().await;
     report.push("renderer: shutdown", exit_ok(exit));
+    let _ = registry.sweep();
 }
 
 fn exit_ok(r: Result<std::process::ExitStatus, String>) -> Result<String, String> {

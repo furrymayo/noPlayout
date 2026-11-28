@@ -1,0 +1,20 @@
+{
+    "$schema": "https://ograf.ebu.io/v1/specification/json-schemas/graphics/schema.json",
+    "name": "noPlayout recovery probe (timed)",
+    "description": "Test fixture (PLAN 2.13.6): encodes the custom-action counter, a hash of the data and the step in one patch. Also encodes deciseconds since load (setInterval over performance.now deltas) in a second patch: the worst case for a rebuild.",
+    "id": "noplayout-probe-timed",
+    "version": "1",
+    "main": "graphic.mjs",
+    "supportsRealTime": true,
+    "supportsNonRealTime": false,
+    "stepCount": 1,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "label": { "type": "string", "default": "probe", "gddType": "single-line" }
+        }
+    },
+    "customActions": [
+        { "id": "bump", "name": "Bump the counter", "description": "Adds one to the counter patch." }
+    ]
+}

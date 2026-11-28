@@ -47,7 +47,7 @@ ADRs 0001–0059 were backfilled in M0 from `DECISIONS.md` E-001…E-059 at 561e
 | [0039](0039-take-onto-an-occupied-layer.md) | TAKE onto an occupied layer replaces it with a cut | accepted | 2026-11-26 |
 | [0040](0040-per-channel-output-process-owns-the-clock-and-ndi.md) | Per-channel output process owns the clock and the NDI senders | accepted | 2026-11-26 |
 | [0041](0041-warm-standby-renderer-per-channel.md) | Warm standby renderer per channel, live-mirrored | accepted | 2026-11-26 |
-| [0042](0042-shared-memory-paint-ring.md) | Shared-memory paint ring per renderer (iceoryx2 or own ring) | accepted | 2026-11-26 |
+| [0042](0042-shared-memory-paint-ring.md) | Shared-memory paint ring per renderer (iceoryx2 or own ring) | accepted; superseded in part by 0063 | 2026-11-26 |
 | [0043](0043-failure-kinds-and-the-recovery-measurement.md) | Failure kinds, detectors and the recovery measurement | accepted | 2026-11-26 |
 | [0044](0044-uncapped-on-air-journal.md) | Uncapped on-air journal; no compaction for third-party graphics | accepted | 2026-11-26 |
 | [0045](0045-time-dependent-state.md) | Time-dependent state: declared checkpoints, flags, no silent loss | accepted | 2026-11-26 |
@@ -65,3 +65,8 @@ ADRs 0001–0059 were backfilled in M0 from `DECISIONS.md` E-001…E-059 at 561e
 | [0057](0057-paintstall-detected-by-a-forced-repaint-probe.md) | PaintStall detected by a forced-repaint probe, not by rAF | accepted | 2026-11-26 |
 | [0058](0058-time-declarations-list-every-timer.md) | Time declarations list every timer with its entry points; exposure and flags per timer; CI declaration audit | accepted | 2026-11-26 |
 | [0059](0059-load-frontier-for-checkpoint-declaring-graphics.md) | Load frontier: exact timestamped full replay before the first checkpoint and as the last fallback (`replayed-timed`) | accepted | 2026-11-26 |
+| [0060](0060-immutable-ograf-package-library.md) | Immutable OGraf package snapshots and offline import boundaries | proposed | 2026-11-27 |
+| [0061](0061-provisional-drive-mode.md) | Provisional drive mode per OS (S1a): macOS A, Windows/Linux pending | draft | 2026-11-27 |
+| [0062](0062-host-bus-commit-rules.md) | Host-bus commit rules: replay never commits, lost renderers resolve as 504, late pages get commands live | accepted | 2026-11-27 |
+| [0063](0063-own-paint-ring-transport.md) | Paint ring transport: own ring over libc `mmap` / `CreateFileMappingW`; iceoryx2 not evaluated (supersedes 0042 in part) | accepted | 2026-11-27 |
+| [0064](0064-pixel-golden-budgets.md) | Pixel goldens: per-OS shape goldens, premultiplied colour compare, fixed budgets (0 px shape, ≤ 32 px text) and a changed-score negative control | accepted | 2026-11-27 |

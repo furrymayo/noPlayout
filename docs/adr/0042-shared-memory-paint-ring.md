@@ -1,6 +1,6 @@
 # 0042. Shared-memory paint ring per renderer (iceoryx2 or own ring)
 
-- **Status:** accepted (DECISIONS.md: Spike-gated (S8))
+- **Status:** accepted (DECISIONS.md: Spike-gated (S8)); superseded in part by 0063 (transport clause)
 - **Date:** 2026-11-26
 - **Deciders:** franky (proposed); Caleb (approved the plan, D-016)
 - **Backfilled:** yes, 2026-11-27, from DECISIONS.md E-042 at 561e4a6 (text copied verbatim, grouped into this template; E-035)
