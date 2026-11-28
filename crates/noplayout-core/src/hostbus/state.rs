@@ -1031,6 +1031,10 @@ impl ChannelState {
                 if replay {
                     // Replay results never commit; they are only compared (§2.14, §2.13.2).
                     self.compare_replay(&r);
+                } else if authoritative && self.is_committed(&r) {
+                    // A promoted standby answering a seq the old active already committed:
+                    // compare, don't count it as dropped (A4).
+                    self.compare_mirror(&r);
                 } else if authoritative {
                     self.commit(r, false, &mut out);
                 } else if role == Role::Program {
@@ -1053,6 +1057,18 @@ impl ChannelState {
             }
         }
         out
+    }
+
+    /// The seq already left `pending` with a real (not engine-synthesised) committed result in
+    /// this live generation. A late answer after a synthesised 504 stays a dropped result.
+    fn is_committed(&self, r: &PageResult) -> bool {
+        self.instances
+            .get(&r.instance_id)
+            .filter(|i| i.generation == r.generation && !i.pending.contains_key(&r.seq))
+            .is_some_and(|_| {
+                self.committed(r)
+                    .is_some_and(|e| e.result.is_some() && !e.synthetic)
+            })
     }
 
     fn committed(&self, r: &PageResult) -> Option<&Entry> {

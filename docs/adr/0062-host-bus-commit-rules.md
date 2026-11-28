@@ -45,7 +45,10 @@ checkpoint tail) never commit. The M1 build left four gaps the review found:
    seq order, so their results commit. Mirror pages still get the full channel. The same holds
    when the active page unregisters while its renderer lives.
 4. **`held` is pruned on commit.** When the authoritative page commits seq n, n is removed from
-   every other connection's `held` map; disposing an instance removes its seqs too.
+   every other connection's `held` map; disposing an instance removes its seqs too. A promoted
+   standby that answers a seq the old active already committed (it was slower) is compared
+   with the commit (`mirror_divergence` on a mismatch), not counted as `dropped_results`; a
+   late answer after an engine-synthesised 504 still counts as dropped.
 5. **`ts.slot`** is `{k, epoch}` from the output process's `Hello` (§5.1): `k` is the first slot
    whose deadline `T_k` is after issue (`noplayout_frames::clock`), `epoch` is the output
    process's `epoch_mono_ns` in decimal. Without an output process the field is absent.

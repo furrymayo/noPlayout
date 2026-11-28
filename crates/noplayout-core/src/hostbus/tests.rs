@@ -651,6 +651,31 @@ fn standby_held_results_are_pruned_as_the_active_commits() {
     assert_eq!(s.counters.mirror_divergence, 0);
 }
 
+#[test]
+fn a_promoted_standby_answering_an_already_committed_seq_is_compared_not_dropped() {
+    let mut s = ch();
+    let a = active(&mut s, 1);
+    let b = s.new_incarnation("tb".into());
+    s.register(2, true, &reg(Role::Program, Some(b), Some("tb")))
+        .unwrap();
+    let d = load(&mut s, 10);
+    s.page(1, result(&d, d.seq, None));
+    s.page(2, result(&d, d.seq, None));
+    let p = play(&mut s, 10);
+    // The active commits; it dies before the slower standby answers.
+    s.page(1, result(&d, p, Some(0)));
+    s.promote(b);
+    s.remove_incarnation(a);
+    assert!(s.page(2, result(&d, p, Some(0))).results.is_empty());
+    assert_eq!(s.counters.dropped_results, 0);
+    assert_eq!(s.counters.mirror_divergence, 0);
+    // A disagreeing duplicate is a mirror divergence, still never a commit.
+    assert!(s.page(2, result(&d, p, Some(1))).results.is_empty());
+    assert_eq!(s.counters.mirror_divergence, 1);
+    assert_eq!(s.counters.dropped_results, 0);
+    assert_eq!(s.instances()[0].current_step, Some(0));
+}
+
 /// The `Action`s a state step sent to connection 7 (a mirror registered by the test).
 fn actions(out: &Out) -> Vec<Action> {
     out.sends
